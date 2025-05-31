@@ -1,5 +1,29 @@
 # Docker
 
+- [Docker](#docker)
+  - [Images vs Containers](#images-vs-containers)
+  - [Dockerfile: first example](#dockerfile-first-example)
+    - [Diffs between `RUN` and `CMD`](#diffs-between-run-and-cmd)
+      - [🔁 Key Differences](#-key-differences)
+  - [BUILD and RUN an image](#build-and-run-an-image)
+    - [Rebuild images](#rebuild-images)
+      - [🧊 Docker Image = Read-Only Blueprint](#-docker-image--read-only-blueprint)
+      - [🔄 What to Do When You Change Your Code](#-what-to-do-when-you-change-your-code)
+      - [🛠️ Pro Tip: Use Docker Volumes for Development](#️-pro-tip-use-docker-volumes-for-development)
+    - [Docker images are layer-based](#docker-images-are-layer-based)
+      - [🧱 What is a Layer?](#-what-is-a-layer)
+      - [🔄 Example: Layer Breakdown](#-example-layer-breakdown)
+      - [⚡ Why Layers Matter](#-why-layers-matter)
+      - [🧠 Optimization](#-optimization)
+  - [RUN, START, STOP](#run-start-stop)
+    - [`docker run`](#docker-run)
+    - [`docker start` / `docker stop`](#docker-start--docker-stop)
+    - [🔁 Summary Table](#-summary-table)
+  - [Naming and Tagging](#naming-and-tagging)
+    - [Images](#images)
+      - [🛠️ Tagging an Existing Image](#️-tagging-an-existing-image)
+    - [Containers](#containers)
+
 ## Images vs Containers
 
 🧊 Docker **Image** = Blueprint (Read-Only)
@@ -174,10 +198,11 @@ If you update your app’s code (e.g., change `index.js`, update `package.json`,
 1. **Rebuild the Docker image**:
 
     ```bash
-   > docker build -t my-app . #-t is optional: it's used to tag the resulting image as my-app
+   > docker build -t my-app . 
     ```
 
-   This re-runs the Dockerfile and creates a new image with your updated code.
+   This re-runs the Dockerfile and creates a new image with your updated code.  
+   `-t` is an optional parameter: it's used to [tag](#naming-and-tagging) the resulting image as my-app
 
 2. **(Optional) Stop and remove the old container**:
 
@@ -279,3 +304,129 @@ CMD ["node", "server.js"]
 | Caching efficiency       | ❌ Poor             | ✅ Good              |
 | Rebuild speed (code only)| 🐢 Slower           | ⚡ Faster             |
 | Best practice alignment  | ❌ No               | ✅ Yes               |
+
+## RUN, START, STOP
+
+### `docker run`
+
+- Creates and starts a **new container.**
+- Syntax: `docker run [OPTIONS] IMAGE [COMMAND]`
+- You use this when you're starting a container for the first time.
+
+**Key behaviors:**
+
+- If the image doesn't exist locally, Docker pulls it.
+- A new container is created and started based on that image.
+- Unless specified, it runs in **attached mode** (i.e., logs/output appear in your terminal).
+
+**Modes:**
+
+- Attached mode (default):
+  - You see the container's output in your terminal.
+  - Ctrl+C stops the container.
+- Detached mode (`-d`):
+  - The container runs in the background.
+  - You get the container ID as output, but no logs are shown unless you use `docker logs`.
+
+**Example:**
+
+```bash
+docker run -it ubuntu bash   # attached mode (interactive shell)
+docker run -d nginx          # detached mode (background Nginx server)
+```
+
+### `docker start` / `docker stop`
+
+- Used for **existing (previously created)** containers.
+- `docker start`: Starts a *stopped* container.
+- `docker stop`: Gracefully stops a *running* container.
+
+These **do not** create new containers, just manage the lifecycle of existing ones.
+
+**Modes with `start`:**
+
+- By default, `docker start` runs in **detached mode**.
+- To run in **attached mode**, use the `-a` option:
+
+  ```bash
+  docker start -a <container_id_or_name>
+  ```
+
+**Examples:**
+
+```bash
+docker stop my_nginx       # Stop the container named my_nginx
+docker start my_nginx      # Start it again (in detached mode)
+docker start -a my_nginx   # Start in attached mode, show output
+```
+
+You can attach to an existing container using `docker attach containerName`.
+Another way (used to read logs) is to run `docker logs -f containerName`. This command attaches to the container and follows printed logs.
+
+---
+
+### 🔁 Summary Table
+
+| Command        | Creates New Container | Starts Container | Can Run in Attached Mode | Can Run in Detached Mode |
+| -------------- | --------------------- | ---------------- | ------------------------ | ------------------------ |
+| `docker run`   | ✅ Yes                 | ✅ Yes            | ✅ Yes (default)          | ✅ Yes (`-d`)             |
+| `docker start` | ❌ No                  | ✅ Yes            | ✅ Yes (`-a`)             | ✅ Yes (default)          |
+| `docker stop`  | ❌ No                  | ❌ No (it stops)  | ❌ No                     | ❌ No                     |
+
+---
+
+## Naming and Tagging
+
+### Images
+
+📌 Basic Syntax
+
+```bash
+docker build -t [name]:[tag] .
+```
+
+- `name`: The repository name for the image
+- `tag`: An optional label (default is `latest` if omitted)
+
+✅ Examples
+
+```bash
+docker build -t myapp:1.0 .
+docker build -t username/myapp:dev .
+```
+
+This tags the image as `username/myapp` with a `dev` version.
+
+
+#### 🛠️ Tagging an Existing Image
+
+You can tag an existing image using:
+
+```bash
+docker tag [source_image]:[source_tag] [target_image]:[target_tag]
+```
+
+✅ Example
+
+```bash
+docker tag myapp:latest myapp:2.0
+```
+
+This creates another reference (tag) to the same image.
+
+### Containers
+
+📌 Running with a Custom Name
+
+```bash
+docker run --name [container_name] [image_name]:[tag]
+```
+
+✅ Examples
+
+```bash
+docker run --name webserver myapp:latest
+```
+
+This creates a container named `webserver` from the `myapp` image.
+
