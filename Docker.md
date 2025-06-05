@@ -1,6 +1,7 @@
 # Docker
 
 - [Docker](#docker)
+  - [Getting started](#getting-started)
   - [Images vs Containers](#images-vs-containers)
   - [Dockerfile: first example](#dockerfile-first-example)
     - [Diffs between `RUN` and `CMD`](#diffs-between-run-and-cmd)
@@ -23,6 +24,13 @@
     - [Images](#images)
       - [🛠️ Tagging an Existing Image](#️-tagging-an-existing-image)
     - [Containers](#containers)
+
+## Getting started
+
+Hi, so you're a developer.  
+Well, you think you are a developer.
+
+Watch this -> https://youtu.be/DQdB7wFEygo?feature=shared
 
 ## Images vs Containers
 
