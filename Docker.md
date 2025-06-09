@@ -24,6 +24,16 @@
     - [Images](#images)
       - [🛠️ Tagging an Existing Image](#️-tagging-an-existing-image)
     - [Containers](#containers)
+  - [Volumes](#volumes)
+    - [Types of Docker Volumes](#types-of-docker-volumes)
+    - [Removing anonymous volumes](#removing-anonymous-volumes)
+    - [What happens when I create a named volume](#what-happens-when-i-create-a-named-volume)
+    - [Summary Table](#summary-table)
+    - [Bind mounts](#bind-mounts)
+      - [Syntax Example](#syntax-example)
+      - [Key Differences from Volumes](#key-differences-from-volumes)
+      - [Use Cases for Bind Mounts](#use-cases-for-bind-mounts)
+      - [⚠️ Caution: runtime with Bind Mount](#️-caution-runtime-with-bind-mount)
 
 ## Getting started
 
@@ -227,7 +237,7 @@ If you update your app’s code (e.g., change `index.js`, update `package.json`,
 
 #### 🛠️ Pro Tip: Use Docker Volumes for Development
 
-If you're actively developing and want to **avoid rebuilding the image every time**, you can mount your code into the container using a volume:
+If you're actively developing and want to **avoid rebuilding the image every time**, you can mount your code into the container using a [volume](#volumes):
 
 ```bash
 docker run -v $(pwd):/app -p 3000:3000 node node index.js
@@ -405,7 +415,6 @@ docker build -t username/myapp:dev .
 
 This tags the image as `username/myapp` with a `dev` version.
 
-
 #### 🛠️ Tagging an Existing Image
 
 You can tag an existing image using:
@@ -438,3 +447,225 @@ docker run --name webserver myapp:latest
 
 This creates a container named `webserver` from the `myapp` image.
 
+## Volumes
+
+In Docker, **volumes** are a mechanism for **persisting data** generated and used by containers. They allow data to exist **outside the container's lifecycle**, meaning the data remains even if the container is deleted or recreated.
+
+Volumes are stored in a part of the host filesystem managed by Docker (`/var/lib/docker/volumes/` on Linux). They are the preferred mechanism for persisting data because they:
+
+- Are easier to back up or migrate.
+- Can be shared between multiple containers.
+- Are managed by Docker (you don’t need to worry about host paths).
+- Work on both Linux and Windows containers.
+
+### Types of Docker Volumes
+
+1) **Anonymous Volumes**
+  
+   - Created **without a name**.
+   - Docker assigns them a random name (e.g., `f3c1e2d3b4a5...`).
+   - Typically used when you mount a volume without specifying a name:
+  
+   ```bash
+   docker run -v /app/data my-image
+   ```
+
+   - **Use case**: Temporary storage where you don’t need to reference the volume again.
+
+2) **Named Volumes**
+
+   - Created with a **specific name**.
+   - Can be reused across multiple containers.
+
+     ```bash
+     docker volume create mydata
+     docker run -v mydata:/app/data my-image
+     ```
+
+   - **Use case**: Persistent storage that you want to manage and reuse.
+
+### Removing anonymous volumes
+
+Anonymous volumes are removed automatically, when a container is removed **ONLY** when you start / run a container with the `--rm` option.
+
+If you start a container without that option, the anonymous volume would NOT be removed, even if you remove the container (with `docker rm ...`).
+
+Still, if you then re-create and re-run the container (i.e. you run `docker run ...` again), **a new anonymous volume will be created**. So even though the anonymous volume wasn't removed automatically, it'll also not be helpful because a different anonymous volume is attached the next time the container starts (i.e. you removed the old container and run a new one).
+
+Now you just start piling up a bunch of unused anonymous volumes. You can clear them via `docker volume rm VOL_NAME` or `docker volume prune.`
+
+### What happens when I create a named volume
+
+When you run the following commands on your local machine:
+
+```bash
+docker volume create mydata
+docker run -v mydata:/app/data my-image
+```
+
+here’s what happens step by step:
+
+🧱 Step 1: `docker volume create mydata`
+
+- Docker creates a **named volume** called `mydata`.
+- This volume is stored in Docker’s default volume directory:
+  
+   ```bash
+  /var/lib/docker/volumes/mydata/_data
+  ```
+
+- It’s an **empty directory** at this point, managed by Docker.
+- You can inspect it with:
+
+  ```bash
+  docker volume inspect mydata
+  ```
+
+🚀 Step 2: `docker run -v mydata:/app/data my-image`
+
+- Docker starts a new container from the image `my-image`.
+- It **mounts the `mydata` volume** to the container’s internal path `/app/data`.
+- Inside the container, anything written to `/app/data` is actually stored in the `mydata` volume on your host.
+- This means:
+  - Data persists even if the container is deleted.
+  - You can reuse the volume in other containers.
+
+🗂️ On Your Local Machine
+
+- A folder is created at:
+  
+  ```bash
+  /var/lib/docker/volumes/mydata/_data
+  ```
+
+- This folder is **not directly visible** in your project directory unless you explicitly mount it.
+- Docker manages this folder, and it’s used to store the data written by the container to `/app/data`.
+
+### Summary Table
+
+| Feature            | Anonymous Volume         | Named Volume             |
+|--------------------|--------------------------|--------------------------|
+| Name               | Randomly generated       | User-defined             |
+| Reusability        | Hard to reuse             | Easy to reuse            |
+| Use case           | Temporary, one-off tasks | Persistent, shared data  |
+| Management         | Harder to manage          | Easier to manage         |
+
+### Bind mounts
+
+**Bind mounts** allow you to **mount a specific file or directory from your host machine** into a container. Unlike Docker-managed volumes, bind mounts give you **direct control** over the exact path on the host.
+
+#### Syntax Example
+
+```bash
+docker run -v /ABSOLUTE/path/on/host:/path/in/container my-image
+```
+
+- `/ABSOLUTE/path/on/host`: A directory or file on your local machine.
+- `/path/in/container`: Where it will appear inside the container.
+
+#### Key Differences from Volumes
+
+| Feature              | Bind Mounts                          | Docker Volumes                      |
+|----------------------|--------------------------------------|-------------------------------------|
+| Managed by Docker    | ❌ No                                | ✅ Yes                               |
+| Host path control    | ✅ You specify the exact path         | ❌ Docker manages the path           |
+| Portability          | ❌ Less portable (host-specific)      | ✅ More portable                     |
+| Use case             | Development, config files, logs      | Persistent app data, databases      |
+| Security             | ⚠️ Less secure (full host access)     | ✅ More secure (Docker-managed)      |
+
+#### Use Cases for Bind Mounts
+
+- **Live code editing**: Mount your source code into the container so changes reflect instantly.
+- **Accessing config files**: Use host config files inside the container.
+- **Log collection**: Write logs from the container to a host directory.
+
+#### ⚠️ Caution: runtime with Bind Mount
+
+Bind mounts can **break** if the host path doesn’t exist, if Docker doesn't have access to the resource folder or some parts/files/modules are missing.
+
+Your `Dockerfile` does:
+
+  ```Dockerfile
+  COPY . /app
+  RUN npm install
+  ```
+
+So when you build the image:
+
+- Your code is copied to `/app`.
+- `npm install` installs dependencies into `/app/node_modules`.
+
+Then you run the container with a bind mount:
+
+  ```bash
+  docker run -v $(pwd):/app my-node-app
+  ```
+
+😬 What if your local folder **doesn't have `node_modules`**?
+
+- Then `/app/node_modules` appears **empty** in the container
+- Your app will crash with errors like `Cannot find module 'express'` or similar
+
+✅ Solutions
+
+1. **Use a Separate Volume for `node_modules`**
+
+    Keep code from your host, but let Docker manage `node_modules`:
+
+    ```bash
+    docker run -v $(pwd):/app -v /app/node_modules my-node-app
+    ```
+
+    - First volume mounts your code
+    - Second volume preserves container's `node_modules` so they're not overridden
+
+    🟢 **Recommended for development**
+
+2. **Install `node_modules` into Local Folder (One-Time)**
+
+    ```bash
+    docker run -v $(pwd):/app node:18 npm install
+    ```
+
+    - Uses a Node container to run `npm install` into your local project folder
+    - Then you can run:
+
+      ```bash
+      docker run -v $(pwd):/app my-node-app
+      ```
+
+    🟡 **Works well but pollutes local environment**
+
+3. **Skip Bind Mount for Production**
+
+    If you're building for production and don’t need to sync local code:
+
+    ```bash
+    docker run my-node-app
+    ```
+
+    - No volumes
+    - Uses fully built image with `COPY` and `node_modules`
+
+    🟢 **Recommended for deployment**
+
+4. **Dev-Only: Install on Start**
+
+    Change `CMD` to install dependencies when the container starts:
+
+    ```Dockerfile
+    CMD ["sh", "-c", "npm install && npm start"]
+    ```
+
+    This works even with a bind mount, but slows down startup and isn’t ideal for production.
+
+    🔴 **Not recommended for production**
+
+🚧 Summary Table
+
+| Use Case                    | What to Do                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Dev with live code sync     | `-v $(pwd):/app -v /app/node_modules`                                           |
+| One-time install            | `docker run -v $(pwd):/app node:18 npm install`                                 |
+| Pure production image       | No bind mount — just run `docker run my-node-app`                               |
+| Dev, no local node\_modules | Avoid running container without `-v /app/node_modules` or install locally first |
