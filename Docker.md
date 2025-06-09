@@ -34,6 +34,13 @@
       - [Key Differences from Volumes](#key-differences-from-volumes)
       - [Use Cases for Bind Mounts](#use-cases-for-bind-mounts)
       - [⚠️ Caution: runtime with Bind Mount](#️-caution-runtime-with-bind-mount)
+  - [ARG and ENV](#arg-and-env)
+    - [`ARG` – Build-Time Variables](#arg--build-time-variables)
+    - [`ENV` – Runtime Environment Variables](#env--runtime-environment-variables)
+    - [Key Differences](#key-differences)
+    - [Placing ARG and ENV inside Dockerfile](#placing-arg-and-env-inside-dockerfile)
+      - [Common Mistakes](#common-mistakes)
+      - [🧠 Summary Table](#-summary-table-1)
 
 ## Getting started
 
@@ -552,7 +559,8 @@ here’s what happens step by step:
 
 ### Bind mounts
 
-**Bind mounts** allow you to **mount a specific file or directory from your host machine** into a container. Unlike Docker-managed volumes, bind mounts give you **direct control** over the exact path on the host.
+**Bind mounts** allow you to **mount a specific file or directory from your host machine** into a container. Unlike Docker-managed volumes, bind mounts give you **direct control** over the exact path on the host.  
+They are a commonly used feature, especially in **development environments** and certain production use cases where direct access to host files is needed.
 
 #### Syntax Example
 
@@ -624,7 +632,7 @@ Then you run the container with a bind mount:
 2. **Install `node_modules` into Local Folder (One-Time)**
 
     ```bash
-    docker run -v $(pwd):/app node:18 npm install
+    docker run -v $(pwd):/app node:22 npm install
     ```
 
     - Uses a Node container to run `npm install` into your local project folder
@@ -666,6 +674,121 @@ Then you run the container with a bind mount:
 | Use Case                    | What to Do                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------- |
 | Dev with live code sync     | `-v $(pwd):/app -v /app/node_modules`                                           |
-| One-time install            | `docker run -v $(pwd):/app node:18 npm install`                                 |
+| One-time install            | `docker run -v $(pwd):/app node:22 npm install`                                 |
 | Pure production image       | No bind mount — just run `docker run my-node-app`                               |
 | Dev, no local node\_modules | Avoid running container without `-v /app/node_modules` or install locally first |
+
+## ARG and ENV
+
+When working with Docker, two commonly used instructions in the Dockerfile are `ARG` and `ENV`. Both are used to define variables, but they serve different purposes and exist at different stages of the Docker lifecycle.
+
+### `ARG` – Build-Time Variables
+
+The `ARG` instruction defines a variable that is **only available during the image build process**. It allows you to parameterize parts of your Dockerfile so that different builds can behave differently without changing the Dockerfile itself.
+
+Characteristics
+
+- **Scope**: Limited to the build stage (`docker build`).
+- **Not preserved** in the final image.
+- **Useful for** customizing things like base image versions, optional build tools, or credentials for temporary use during build (e.g., cloning a private repo).
+- **Can have default values**.
+- **Can be overridden** using the `--build-arg` flag when building.
+
+✅ Example
+
+```Dockerfile
+ARG VERSION=1.0
+FROM node:${VERSION}
+```
+
+```sh
+docker build --build-arg VERSION=20 -t my-app .
+```
+
+In this example, the base Node.js version can be changed at build time.
+
+---
+
+### `ENV` – Runtime Environment Variables
+
+The `ENV` instruction defines environment variables that are **embedded into the image** and available to the application **at runtime** (when a container starts). These variables persist in the image and can be used by scripts, applications, and even during the build process after being defined.
+
+Characteristics
+
+- **Scope**: Available during both build and runtime.
+- **Persisted** in the final image and visible inside containers.
+- **Used for** configuring application behavior, defining paths, ports, credentials (note: not secure), etc.
+- **Can be overridden** at runtime with the `-e` or `--env` flag when running a container.
+
+✅ Example
+
+```Dockerfile
+ENV NODE_ENV=production
+```
+
+```sh
+docker run -e NODE_ENV=development my-app
+```
+
+In this case, the default `NODE_ENV` is `production`, but it can be overridden when the container is started.
+
+---
+
+### Key Differences
+
+| Feature      | `ARG`                      | `ENV`                         |
+| ------------ | -------------------------- | ----------------------------- |
+| Availability | Build-time only            | Build-time and runtime        |
+| Visibility   | Not available in container | Available inside container    |
+| Persistence  | Not saved in image         | Saved in image                |
+| Override     | `--build-arg` (build)      | `-e` or `--env` (run)         |
+| Security     | Safer (not in final image) | Not secure (visible in image) |
+
+### Placing ARG and ENV inside Dockerfile
+
+Each instruction in a Dockerfile creates a new **layer**. Docker caches these layers to avoid rebuilding unchanged parts. Therefore, **placing variable declarations properly** can improve cache use and reduce rebuild time.
+
+**Place `ARG` as early as possible**, especially **before `FROM`**, if you want to use it in the `FROM` instruction. If used only later in the build, place it right before it’s needed.
+
+✅ Example
+
+```Dockerfile
+# Define ARG before FROM if used in FROM
+ARG NODE_VERSION=22
+FROM node:${NODE_VERSION}
+
+# Another ARG used later
+ARG APP_NAME
+RUN echo "Building ${APP_NAME}"
+```
+
+> ⚠️ Note: Only `ARG`s defined **before `FROM`** can be used in the `FROM` instruction.
+
+Place `ENV` **just before it's used**, especially if it affects build steps (e.g., a `RUN` command). If it’s for **application runtime config**, place it **after all build steps**, close to the final stage.
+
+✅ Example
+
+```Dockerfile
+FROM node:22
+
+# Used during build (affects RUN)
+ENV PATH=/opt/app/bin:$PATH
+RUN mkdir -p /opt/app && echo $PATH
+
+# Used at runtime (final image)
+ENV NODE_ENV=production
+CMD ["node", "app.js"]
+```
+
+#### Common Mistakes
+
+- **Don't place unnecessary `ENV` too early**: If it changes frequently, early placement may invalidate cached layers.
+- **Don’t overuse `ARG`**: They aren't available at runtime—don’t rely on them for environment config.
+- **Don't redefine variables** unless necessary—each redefinition creates a new layer.
+
+#### 🧠 Summary Table
+
+| Instruction | Best Placement                                                     | Reason                                             |
+| ----------- | ------------------------------------------------------------------ | -------------------------------------------------- |
+| `ARG`       | Before `FROM` (if used there) or before use                        | Affects base image or build logic                  |
+| `ENV`       | Before build step (if used during build) or late (if runtime only) | Keeps cache effective; avoids unnecessary rebuilds |
