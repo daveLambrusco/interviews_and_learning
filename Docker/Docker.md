@@ -5,47 +5,47 @@
   - [Images vs Containers](#images-vs-containers)
   - [Dockerfile: first example](#dockerfile-first-example)
     - [Diffs between `RUN` and `CMD`](#diffs-between-run-and-cmd)
-      - [🔁 Key Differences](#-key-differences)
+      - [`RUN` and `CMD`: key Differences](#run-and-cmd-key-differences)
   - [BUILD and RUN an image](#build-and-run-an-image)
     - [Rebuild images](#rebuild-images)
-      - [🧊 Docker Image = Read-Only Blueprint](#-docker-image--read-only-blueprint)
-      - [🔄 What to Do When You Change Your Code](#-what-to-do-when-you-change-your-code)
-      - [🛠️ Pro Tip: Use Docker Volumes for Development](#️-pro-tip-use-docker-volumes-for-development)
+      - [Docker Image = Read-Only Blueprint](#docker-image--read-only-blueprint)
+      - [What to Do When You Change Your Code](#what-to-do-when-you-change-your-code)
+      - [Pro Tip: Use Docker Volumes for Development](#pro-tip-use-docker-volumes-for-development)
     - [Docker images are layer-based](#docker-images-are-layer-based)
-      - [🧱 What is a Layer?](#-what-is-a-layer)
-      - [🔄 Example: Layer Breakdown](#-example-layer-breakdown)
-      - [⚡ Why Layers Matter](#-why-layers-matter)
-      - [🧠 Optimization](#-optimization)
+      - [What is a Layer?](#what-is-a-layer)
+      - [Example: Layer Breakdown](#example-layer-breakdown)
+      - [Why Layers Matter](#why-layers-matter)
+      - [Optimization](#optimization)
   - [RUN, START, STOP](#run-start-stop)
     - [`docker run`](#docker-run)
     - [`docker start` / `docker stop`](#docker-start--docker-stop)
-    - [🔁 Summary Table](#-summary-table)
+    - [Summary Table](#summary-table)
   - [Naming and Tagging](#naming-and-tagging)
     - [Images](#images)
-      - [🛠️ Tagging an Existing Image](#️-tagging-an-existing-image)
+      - [Tagging an Existing Image](#tagging-an-existing-image)
     - [Containers](#containers)
   - [Volumes](#volumes)
     - [Types of Docker Volumes](#types-of-docker-volumes)
     - [Removing anonymous volumes](#removing-anonymous-volumes)
     - [What happens when I create a named volume](#what-happens-when-i-create-a-named-volume)
-    - [Summary Table](#summary-table)
+    - [Anonymous and Named volumes: summary Table](#anonymous-and-named-volumes-summary-table)
     - [Bind mounts](#bind-mounts)
       - [Syntax Example](#syntax-example)
       - [Key Differences from Volumes](#key-differences-from-volumes)
       - [Use Cases for Bind Mounts](#use-cases-for-bind-mounts)
-      - [⚠️ Caution: runtime with Bind Mount](#️-caution-runtime-with-bind-mount)
+      - [Caution: runtime with Bind Mount](#caution-runtime-with-bind-mount)
   - [ARG and ENV](#arg-and-env)
     - [`ARG` – Build-Time Variables](#arg--build-time-variables)
     - [`ENV` – Runtime Environment Variables](#env--runtime-environment-variables)
-    - [Key Differences](#key-differences)
+    - [`ARG` and `ENV`: key Differences](#arg-and-env-key-differences)
     - [Placing ARG and ENV inside Dockerfile](#placing-arg-and-env-inside-dockerfile)
       - [Common Mistakes](#common-mistakes)
-      - [🧠 Summary Table](#-summary-table-1)
+      - [Placing ARG and ENV: summary Table](#placing-arg-and-env-summary-table)
   - [Networks](#networks)
     - [Why Use Docker Networks?](#why-use-docker-networks)
-    - [🧭 **Types of Docker Networks**](#-types-of-docker-networks)
-    - [⚙️ **How Containers Communicate**](#️-how-containers-communicate)
-    - [🛠️ **Common Commands**](#️-common-commands)
+    - [Types of Docker Networks](#types-of-docker-networks)
+    - [How Containers Communicate](#how-containers-communicate)
+    - [Common Commands](#common-commands)
     - [Connecting multiple containers](#connecting-multiple-containers)
 
 ## Getting started
@@ -85,6 +85,8 @@ Watch this -> <https://youtu.be/DQdB7wFEygo?feature=shared>
 | Mutability     | Read-only                | Read-write                |
 | Lifecycle      | Built once               | Created, started, stopped |
 | Analogy        | Class (in OOP)           | Object (in OOP)           |
+
+---
 
 🧪 Example
 
@@ -179,7 +181,7 @@ For more infos and optimization see [layer based images](#docker-images-are-laye
   
   This runs your app when the container starts.
 
-#### 🔁 Key Differences
+#### `RUN` and `CMD`: key Differences
 
 | Feature            | `RUN`                          | `CMD`                         |
 |--------------------|--------------------------------|-------------------------------|
@@ -216,13 +218,13 @@ When I make a request to my local port 3000, it's redirected towards internal co
 
 A Docker image is like a **read-only template** or **snapshot** of your application and its environment. Here's how it works and what to do when your code changes:
 
-#### 🧊 Docker Image = Read-Only Blueprint
+#### Docker Image = Read-Only Blueprint
 
 - It contains everything needed to run your app: code, dependencies, OS libraries, etc.
 - Once built, it **does not change**: it's **immutable**.
 - You can create multiple containers from the same image, and they’ll all behave the same.
 
-#### 🔄 What to Do When You Change Your Code
+#### What to Do When You Change Your Code
 
 If you update your app’s code (e.g., change `index.js`, update `package.json`, etc.), you need to:
 
@@ -248,7 +250,7 @@ If you update your app’s code (e.g., change `index.js`, update `package.json`,
    > docker run -p 3000:3000 --name my-app-container my-app
    ```
 
-#### 🛠️ Pro Tip: Use Docker Volumes for Development
+#### Pro Tip: Use Docker Volumes for Development
 
 If you're actively developing and want to **avoid rebuilding the image every time**, you can mount your code into the container using a [volume](#volumes):
 
@@ -264,13 +266,13 @@ Docker images being **layer-based** means that they are built in a **stack of la
 
 Let’s break this down:
 
-#### 🧱 What is a Layer?
+#### What is a Layer?
 
 - A **layer** is a **read-only file system change**.
 - Each layer represents a **step** in building the image.
 - Layers are **cached** and **reused** to speed up builds.
 
-#### 🔄 Example: Layer Breakdown
+#### Example: Layer Breakdown
 
 Given this Dockerfile:
 
@@ -290,13 +292,13 @@ Docker builds it like this:
 4. **Layer 4**: Installs dependencies.
 5. **Layer 5**: Adds the default command to run.
 
-#### ⚡ Why Layers Matter
+#### Why Layers Matter
 
 - **Efficiency**: If you change only one file, Docker can **reuse previous layers** and rebuild only the changed ones.
 - **Caching**: Docker caches each layer. If nothing changes in a layer, it skips rebuilding it.
 - **Storage**: Layers are shared between images. If two images use the same base image, they share that layer.
 
-#### 🧠 Optimization
+#### Optimization
 
 To take advantage of caching put commands that **change less often** (like `RUN npm install`) **before** commands that change frequently (like `COPY .`). This avoids invalidating the cache too early.
 
@@ -327,6 +329,8 @@ CMD ["node", "server.js"]
 
 3. **Cleaner Dependency Management**:
    - Keeps dependency installation separate from app code, which is a good practice.
+
+---
 
 🧪 Summary:
 
@@ -396,7 +400,7 @@ Another way (used to read logs) is to run `docker logs -f containerName`. This c
 
 ---
 
-### 🔁 Summary Table
+### Summary Table
 
 | Command        | Creates New Container | Starts Container | Can Run in Attached Mode | Can Run in Detached Mode |
 | -------------- | --------------------- | ---------------- | ------------------------ | ------------------------ |
@@ -428,7 +432,7 @@ docker build -t username/myapp:dev .
 
 This tags the image as `username/myapp` with a `dev` version.
 
-#### 🛠️ Tagging an Existing Image
+#### Tagging an Existing Image
 
 You can tag an existing image using:
 
@@ -554,7 +558,7 @@ here’s what happens step by step:
 - This folder is **not directly visible** in your project directory unless you explicitly mount it.
 - Docker manages this folder, and it’s used to store the data written by the container to `/app/data`.
 
-### Summary Table
+### Anonymous and Named volumes: summary Table
 
 | Feature            | Anonymous Volume         | Named Volume             |
 |--------------------|--------------------------|--------------------------|
@@ -593,7 +597,7 @@ docker run -v /ABSOLUTE/path/on/host:/path/in/container my-image
 - **Accessing config files**: Use host config files inside the container.
 - **Log collection**: Write logs from the container to a host directory.
 
-#### ⚠️ Caution: runtime with Bind Mount
+#### Caution: runtime with Bind Mount
 
 Bind mounts can **break** if the host path doesn’t exist, if Docker doesn't have access to the resource folder or some parts/files/modules are missing.
 
@@ -675,6 +679,8 @@ Then you run the container with a bind mount:
 
     🔴 **Not recommended for production**
 
+---
+
 🚧 Summary Table
 
 | Use Case                    | What to Do                                                                      |
@@ -740,7 +746,7 @@ In this case, the default `NODE_ENV` is `production`, but it can be overridden w
 
 ---
 
-### Key Differences
+### `ARG` and `ENV`: key Differences
 
 | Feature      | `ARG`                      | `ENV`                         |
 | ------------ | -------------------------- | ----------------------------- |
@@ -792,7 +798,7 @@ CMD ["node", "app.js"]
 - **Don’t overuse `ARG`**: They aren't available at runtime—don’t rely on them for environment config.
 - **Don't redefine variables** unless necessary—each redefinition creates a new layer.
 
-#### 🧠 Summary Table
+#### Placing ARG and ENV: summary Table
 
 | Instruction | Best Placement                                                     | Reason                                             |
 | ----------- | ------------------------------------------------------------------ | -------------------------------------------------- |
@@ -810,7 +816,7 @@ A **Docker network** is a virtual network that allows containers to communicate 
 - **Security**: Limit exposure of services to only those that need access.
 - **Scalability**: Helps services discover and connect to each other dynamically.
 
-### 🧭 **Types of Docker Networks**
+### Types of Docker Networks
 
 Docker supports several built-in network drivers, each serving different purposes:
 
@@ -824,7 +830,7 @@ Docker supports several built-in network drivers, each serving different purpose
 
 ---
 
-### ⚙️ **How Containers Communicate**
+### How Containers Communicate
 
 1. **Same Bridge Network**:
 
@@ -841,7 +847,7 @@ Docker supports several built-in network drivers, each serving different purpose
    - Automatically creates a user-defined bridge network.
    - Containers can talk using service names as DNS names.
 
-### 🛠️ **Common Commands**
+### Common Commands
 
 ```bash
 # List all networks
