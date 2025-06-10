@@ -41,13 +41,19 @@
     - [Placing ARG and ENV inside Dockerfile](#placing-arg-and-env-inside-dockerfile)
       - [Common Mistakes](#common-mistakes)
       - [🧠 Summary Table](#-summary-table-1)
+  - [Networks](#networks)
+    - [Why Use Docker Networks?](#why-use-docker-networks)
+    - [🧭 **Types of Docker Networks**](#-types-of-docker-networks)
+    - [⚙️ **How Containers Communicate**](#️-how-containers-communicate)
+    - [🛠️ **Common Commands**](#️-common-commands)
+    - [Connecting multiple containers](#connecting-multiple-containers)
 
 ## Getting started
 
 Hi, so you're a developer.  
 Well, you think you are a developer.
 
-Watch this -> https://youtu.be/DQdB7wFEygo?feature=shared
+Watch this -> <https://youtu.be/DQdB7wFEygo?feature=shared>
 
 ## Images vs Containers
 
@@ -792,3 +798,122 @@ CMD ["node", "app.js"]
 | ----------- | ------------------------------------------------------------------ | -------------------------------------------------- |
 | `ARG`       | Before `FROM` (if used there) or before use                        | Affects base image or build logic                  |
 | `ENV`       | Before build step (if used during build) or late (if runtime only) | Keeps cache effective; avoids unnecessary rebuilds |
+
+## Networks
+
+A **Docker network** is a virtual network that allows containers to communicate with each other and with external systems. Each container can be connected to one or more networks, enabling flexible communication paths and isolation.
+
+### Why Use Docker Networks?
+
+- **Inter-container communication**: So containers can talk to each other directly.
+- **Isolation**: Separate environments for different applications or stages.
+- **Security**: Limit exposure of services to only those that need access.
+- **Scalability**: Helps services discover and connect to each other dynamically.
+
+### 🧭 **Types of Docker Networks**
+
+Docker supports several built-in network drivers, each serving different purposes:
+
+| Network Type | Description                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| **bridge**   | Default for standalone containers. Isolated network on the Docker host.                      |
+| **host**     | Removes network isolation between container and host. Container shares host's network stack. |
+| **macvlan**  | Assigns a MAC address to a container for direct access to the physical network.              |
+| **none**     | No network connectivity. Used for custom network stacks or extreme isolation.                |
+| **overlay**  | Used in Docker Swarm. Allows containers across multiple hosts to communicate securely.       |
+
+---
+
+### ⚙️ **How Containers Communicate**
+
+1. **Same Bridge Network**:
+
+   - Docker assigns an internal IP.
+   - Containers can reference each other **by container name**.
+
+2. **Different Networks**:
+
+   - You must connect containers to a shared network.
+   - External access may require published ports (`-p` or `--publish`).
+
+3. **Docker Compose**:
+
+   - Automatically creates a user-defined bridge network.
+   - Containers can talk using service names as DNS names.
+
+### 🛠️ **Common Commands**
+
+```bash
+# List all networks
+docker network ls
+
+# Inspect a network
+docker network inspect <network_name>
+
+# Create a custom bridge network
+docker network create my_custom_network
+
+# Run a container in a specific network
+docker run -d --network=my_custom_network --name=my_container nginx
+
+# Connect an existing container to a network
+docker network connect my_custom_network my_container
+
+# Disconnect a container from a network
+docker network disconnect my_custom_network my_container
+```
+
+### Connecting multiple containers
+
+🔗 Step 1: Create a Shared Network
+
+You can use a user-defined bridge network for easy name-based container communication.
+
+```bash
+docker network create my_shared_network
+```
+
+📦 Step 2: Run Containers in That Network
+
+Let's say you're running a **Node.js app**, a **MongoDB** database, and a **Redis** cache.
+
+```bash
+# Run MongoDB
+docker run -d --name mongodb --network=my_shared_network mongo
+
+# Run Redis
+docker run -d --name redis --network=my_shared_network redis
+
+# Run your Node.js app
+docker run -d --name node-app --network=my_shared_network node-app-image
+```
+
+> ✅ Because they are in the same user-defined bridge network, they can resolve each other by container name (e.g., `"mongodb"` or `"redis"`). There's **no need to publish the ports**.
+
+📍 Step 3: Refer to Services by Name in Node.js
+
+You don't need to use IP addresses. Docker provides **internal DNS resolution**, so you can connect like this:
+
+🟦 MongoDB with `mongoose`
+
+```js
+import mongoose from 'mongoose';
+
+await mongoose.connect('mongodb://mongodb:27017/mydb', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+```
+
+🟥 Redis with `ioredis`
+
+```js
+import Redis from 'ioredis';
+
+const redis = new Redis({
+  host: 'redis',
+  port: 6379,
+});
+```
+
+> 🔁 The hostnames `mongodb` and `redis` come from the container **names** on the shared Docker network.
