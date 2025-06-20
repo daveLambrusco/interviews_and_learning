@@ -47,6 +47,16 @@
     - [How Containers Communicate](#how-containers-communicate)
     - [Common Commands](#common-commands)
     - [Connecting multiple containers](#connecting-multiple-containers)
+  - [Docker Compose](#docker-compose)
+    - [Example](#example)
+      - [Example `Dockerfile` for Backend (`backend/Dockerfile`)](#example-dockerfile-for-backend-backenddockerfile)
+      - [Example `Dockerfile` for Frontend (`frontend/Dockerfile`)](#example-dockerfile-for-frontend-frontenddockerfile)
+    - [`image` vs `build` in Docker Compose](#image-vs-build-in-docker-compose)
+      - [Referencing a Local Image](#referencing-a-local-image)
+      - [When to Use What?](#when-to-use-what)
+    - [Volumes and Bind Mounts: CLI vs Docker Compose](#volumes-and-bind-mounts-cli-vs-docker-compose)
+      - [Summary of Differences](#summary-of-differences)
+    - [Run the file](#run-the-file)
 
 ## Getting started
 
@@ -923,3 +933,236 @@ const redis = new Redis({
 ```
 
 > 🔁 The hostnames `mongodb` and `redis` come from the container **names** on the shared Docker network.
+
+## Docker Compose
+
+**Docker Compose** is a tool used for defining and running multi-container Docker applications. With Docker Compose, you can use a **YAML file** to configure your application's services, networks, and volumes, and then start everything with a single command: `docker-compose up`.
+
+Docker Compose:
+
+- **Simplifies multi-container setups** (e.g., web server + database).
+- **Centralized configuration** in a single file.
+- **Easier development and testing** environments.
+
+---
+
+### Example
+
+Let’s say you have a basic web application that uses
+
+- **Angular** (frontend)
+- **Node.js/Express** (backend)
+- **MongoDB** (database)
+
+📁 Project Structure
+
+```bash
+my-fullstack-app/
+│
+├── docker-compose.yml
+├── backend/
+│   └── Dockerfile
+├── frontend/
+│   └── Dockerfile
+└── mongo-data/  (volume for MongoDB)
+```
+
+🧾 `docker-compose.yml`
+
+```yaml
+services:
+  mongo:
+    image: mongo
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  backend:
+    build: ./backend #executes Dockerfile inside backend folder
+    container_name: backend
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGO_URL_EQUAL=mongodb://mongo:27017/mydb
+      - MONGO_URL_COLON: mongodb://mongo:27017/mydb #equivalent to the first syntax
+    env_file: #to store env variables in a separate file
+      - ./env/mongo.env
+    depends_on:
+      - mongo #ensures MongoDB starts before the backend.
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./frontend/src:/app/src #to reflect local changes inside the container
+    stdin_open: true     # equivalent to -i (interactive)
+    tty: true            # equivalent to -t (allocate a pseudo-TTY
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data: #yes, this is the correct syntax (DON'T REMOVE THE COLON!)
+```
+
+This setup:
+
+- Spins up MongoDB, Node.js, and Angular containers.
+- Connects them via Docker’s internal network.
+- Ensures proper startup order.
+- Exposes ports so you can access:
+  - Angular at <http://localhost:4200>
+  - Node.js API at <http://localhost:3000>
+  - MongoDB at localhost:27017
+
+There's no need to specify `--rm` (remove when shut down) or `-d` (detach mode) in this file.  
+Containers are automatically removed when shut down and the `-d` can be specified inside the [run](#run-the-file) command
+
+#### Example `Dockerfile` for Backend (`backend/Dockerfile`)
+
+```Dockerfile
+FROM node:22
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+#### Example `Dockerfile` for Frontend (`frontend/Dockerfile`)
+
+```Dockerfile
+FROM node:22
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 4200
+CMD ["npm", "start"]
+```
+
+### `image` vs `build` in Docker Compose
+
+| Key | `image` | `build` |
+|-----|--------|--------|
+| **Purpose** | Use a pre-built Docker image | Build a Docker image from a Dockerfile |
+| **Usage** | When the image is already available (locally or on Docker Hub) | When you want to build a custom image from source code |
+| **Example** | `image: node:22` | `build: ./backend` |
+| **Flexibility** | Less flexible (you use what's already built) | More flexible (you define how the image is built) |
+
+#### Referencing a Local Image
+
+If you've already built a Docker image locally (e.g., with `docker build -t my-custom-image .`), you can reference it in your `docker-compose.yml` like this:
+
+```yaml
+services:
+  myservice:
+    image: my-custom-image
+```
+
+> ⚠️ Just make sure the image exists locally before running `docker-compose up`, or it will try to pull it from Docker Hub and fail.
+
+#### When to Use What?
+
+- Use **`image`** when:
+  - You want to use a standard image (like `mongo`, `node`, `nginx`, etc.).
+  - You’ve already built the image manually and want to reuse it.
+
+- Use **`build`** when:
+  - You have a custom app with a `Dockerfile`.
+  - You want Docker Compose to handle building the image for you.
+
+### Volumes and Bind Mounts: CLI vs Docker Compose
+
+In **Docker CLI** you specify paths directly in the `-v` or `--mount` flag:
+
+```bash
+docker run -v /absolute/host/path:/container/path myimage
+```
+
+- The **host path must be absolute**.
+- You can’t use relative paths like `./data`.
+
+In **Docker Compose** you can use **relative paths**, and they are **relative to the location of the `docker-compose.yml` file**:
+
+```yaml
+services:
+  app:
+    image: myimage
+    volumes:
+      - ./data:/app/data  # relative path
+      - /absolute/path:/app/config  # absolute path
+```
+
+- `./data` is relative to the directory where `docker-compose.yml` is located.
+- `/absolute/path` works the same as in CLI.
+
+#### Summary of Differences
+
+| Feature            | Docker CLI                      | Docker Compose                     |
+|--------------------|----------------------------------|-------------------------------------|
+| Relative paths     | ❌ Not allowed                   | ✅ Allowed (relative to compose file) |
+| Absolute paths     | ✅ Required                      | ✅ Allowed                           |
+| Named volumes      | ✅ Supported                     | ✅ Supported                         |
+
+### Run the file
+
+The `docker-compose up` command **builds, (re)creates, starts, and attaches** to containers for all services defined in your `docker-compose.yml`.
+
+🔧 Basic Usage
+
+```bash
+docker-compose up
+```
+
+This will:
+
+- Build images (if not already built)
+- Create containers
+- Start services
+- Stream logs to your terminal
+
+✅ Common Flags
+
+| Flag | Description |
+|------|-------------|
+| `-d` | Run in **detached mode** (in the background) |
+| `--build` | Force rebuild of images before starting |
+| `--force-recreate` | Recreate containers even if nothing changed |
+| `--remove-orphans` | Remove containers not defined in the current `docker-compose.yml` |
+| `--no-deps` | Don’t start linked services (useful for running a single service) |
+
+---
+
+The `docker-compose down` command **stops and removes** everything created by `docker-compose up`, including:
+
+- Containers
+- Networks
+- Volumes (optional)
+- Images (optional)
+
+🔧 Syntax
+
+```bash
+docker-compose down [options]
+```
+
+✅ Common Flags
+
+| Flag | Description |
+|------|-------------|
+| `-v` | Also remove named volumes declared in `volumes:` |
+| `--rmi all` | Remove all images used by any service |
+| `--remove-orphans` | Remove containers not defined in the current `docker-compose.yml` |
