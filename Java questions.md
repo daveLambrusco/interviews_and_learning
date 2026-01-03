@@ -6,7 +6,6 @@
     - [Reverse a String or Array](#reverse-a-string-or-array)
     - [Find duplicate in array](#find-duplicate-in-array)
       - [Using HashMap to Find Duplicates](#using-hashmap-to-find-duplicates)
-        - [**TODO**: Study Java HashMap Methods (https://www.w3schools.com/java/java\_ref\_hashmap.asp)](#todo-study-java-hashmap-methods-httpswwww3schoolscomjavajava_ref_hashmapasp)
     - [Two Sum Problem](#two-sum-problem)
       - [Brute force (O(n²))](#brute-force-on)
       - [Optimal Solution (Using HashMap, O(n))](#optimal-solution-using-hashmap-on)
@@ -25,7 +24,6 @@
   - [Heaps](#heaps)
   - [Log](#log)
 
-
 ## Arrays & Strings
 
 ### ArrayList vs LinkedList
@@ -39,7 +37,7 @@ Insert/Delete in Middle | ❌ Slower (O(n)) due to shifting | ✅ Fast if you ha
 Memory Usage | Less (just data) | More (data + 2 pointers per node)
 Use Case | Random access, more reads | Frequent add/remove at head/tail
 
-### Reverse a String or Array 
+### Reverse a String or Array
 
 ```Java
 public String reverseString(String s) {
@@ -50,7 +48,7 @@ public String reverseString(String s) {
 ```Java
 public void reverseArray(int[] arr) {
    int left = 0;
-   int right = arr.length() - 1;
+   int right = arr.length - 1;  // Note: length is a property, not a method
 
    while(left < right) {
       int tmp = arr[left];
@@ -59,7 +57,6 @@ public void reverseArray(int[] arr) {
    }
 }
 ```
-
 
 ### Find duplicate in array
 
@@ -85,7 +82,7 @@ Why `HashMap`?
 - Useful for not just detecting, but tracking frequency.
 
 ```Java
-public List<int> findDuplicate(int[] nums) {
+public List<Integer> findDuplicates(int[] nums) {
    Map<Integer, Integer> map = new HashMap<>();
    List<Integer> duplicates = new ArrayList<>();
 
@@ -93,7 +90,7 @@ public List<int> findDuplicate(int[] nums) {
       map.put(num, map.getOrDefault(num, 0) + 1);
    }
 
-   for(Map<Integer, Integer> entry : map.entrySet()) {
+   for(Map.Entry<Integer, Integer> entry : map.entrySet()) {
        if (entry.getValue() > 1)
             duplicates.add(entry.getKey());
    }
@@ -101,7 +98,7 @@ public List<int> findDuplicate(int[] nums) {
 }
 ```
 
-##### **TODO**: Study Java HashMap Methods (https://www.w3schools.com/java/java_ref_hashmap.asp)
+Java HashMap Methods (<https://www.w3schools.com/java/java_ref_hashmap.asp>)
 
 ### Two Sum Problem
 
@@ -163,7 +160,7 @@ We use two pointers
 ```Java
 public int[] twoSumSorted(int[] nums, int target) {
    int left = 0;
-   int right = nums.length() - 1;
+   int right = nums.length - 1;
 
    while (left < right) {
       int sum = nums[left] + nums[right];
@@ -171,9 +168,9 @@ public int[] twoSumSorted(int[] nums, int target) {
       if(sum == target)
          return new int[]{left, right};
       else if(sum < target)
-         left++;
+         left++;   // sum too small, move left pointer right
       else
-         right--;
+         right--;  // sum too large, move right pointer left
    }
 
    return new int[0];
@@ -191,7 +188,8 @@ Output: [5, 6, 7, 1, 2, 3, 4]
 
 ```Java
 public void rotate(int[] nums, int k) {
-    k = k % nums.length; // handle cases where k > n
+    int n = nums.length;
+    k = k % n; // handle cases where k > n
 
     reverse(nums, 0, n - 1);      // 1. Reverse entire array
     reverse(nums, 0, k - 1);      // 2. Reverse first k elements
@@ -213,11 +211,11 @@ private void reverse(int[] nums, int start, int end) {
 
 ```Java
 public boolean isAnagram(String a, String b) {
-   if(a.length != b.length)
+   if(a.length() != b.length())  // length() is a method for String
       return false;
 
-   char[] a1 = string1.toCharArray();
-   char[] a2 = string2.toCharArray();
+   char[] a1 = a.toCharArray();  // use parameter names consistently
+   char[] a2 = b.toCharArray();
    Arrays.sort(a1);
    Arrays.sort(a2);
    return Arrays.equals(a1, a2);
@@ -241,15 +239,16 @@ public boolean isAnagram(String s, String t) {
     if (s.length() != t.length())
         return false;
 
-    char[] first = stringOne.toLowerCase().toCharArray(); 
-    char[] second = stringTwo.toLowerCase().toCharArray();
+    char[] first = s.toLowerCase().toCharArray();  // use parameter names
+    char[] second = t.toLowerCase().toCharArray();
 
-    int[] count = new int[26];
-    for (int i = 0; i < first.length(); i++) {
-        count[first[i] - 'a']++;
-        count[second[i] - 'a']--;
+    int[] count = new int[26];  // frequency array for 26 lowercase letters
+    for (int i = 0; i < first.length; i++) {  // length is a property for arrays
+        count[first[i] - 'a']++;   // increment for chars in first string
+        count[second[i] - 'a']--;  // decrement for chars in second string
     }
 
+    // If anagrams, all counts should be zero
     for (int c : count) {
         if (c != 0)
             return false;
@@ -263,8 +262,8 @@ public boolean isAnagram(String s, String t) {
 
 ### HashMap vs TreeMap vs LinkedHashMap
 
-Feature | HashMap | TreeMap | LinkedHashMap |
-|-|-|-|-|
+Feature | HashMap | TreeMap | LinkedHashMap
+|-|-|-
 Ordering | ❌ No ordering | ✅ Sorted by keys (natural or custom) | ✅ Insertion order preserved
 Time Complexity | O(1) for get/put (avg) | O(log n) for get/put | O(1) for get/put
 Null keys/values | 1 null key, many null values | ❌ No null keys | ✅ 1 null key, many null values
@@ -276,7 +275,6 @@ Summary:
 - `HashMap`: fast key-value lookup with no order.
 - `TreeMap`:  sorted keys.
 - `LinkedHashMap`: maintain insertion order or implement something like LRU cache
-
 
 ## Stacks & Queues
 
@@ -302,36 +300,45 @@ Instead of using the older Stack class (which is synchronized and legacy), Java 
 
 - `Deque` (ArrayDeque) is faster, more modern, and **non-thread-safe** (which is good unless you need concurrency).
 
-| Stack Operation | Deque Method (LIFO)        | Description             |
-|------------------|----------------------------|--------------------------|
-| `push(x)`        | `push(x)` / `addFirst(x)`  | Add to top of stack      |
-| `pop()`          | `pop()` / `removeFirst()`  | Remove top of stack      |
-| `peek()`         | `peek()` / `getFirst()`    | View top of stack        |
-| `isEmpty()`      | `isEmpty()`                | Check if stack is empty  |
-
-
+Stack Operation | Deque Method (LIFO)        | Description
+-----------------|----------------------------|--------------------------
+`push(x)`        | `push(x)` / `addFirst(x)`  | Add to top of stack
+`pop()`          | `pop()` / `removeFirst()`  | Remove top of stack
+`peek()`         | `peek()` / `getFirst()`    | View top of stack
+`isEmpty()`      | `isEmpty()`                | Check if stack is empty
 
 ### Valid Parentheses
 
 ```Java
 public boolean isValid(String s) {
     Deque<Character> stack = new ArrayDeque<>();
-
-    for(chat c : s.toCharArray()) {
-        if(c == '(' || c == '[' || c == '{')
+    
+    for(char c : s.toCharArray()) {  // fixed typo: 'char' not 'chat'
+        // Push opening brackets onto stack
+        if(c == '(' || c == '[' || c == '{') {
             stack.push(c);
-        else if(stack.isEmpty() || stack.pop() != c)
-            return false;
+        }
+        // For closing brackets, check if they match
+        else {
+            if(stack.isEmpty()) return false;  // no matching opening bracket
+            
+            char top = stack.pop();
+            if((c == ')' && top != '(') ||
+               (c == ']' && top != '[') ||
+               (c == '}' && top != '{')) {
+                return false;  // mismatched pair
+            }
+        }
     }
     
-    return stack.isEmpty();
+    return stack.isEmpty();  // all brackets should be matched
 }
 ```
 
 ## Heaps
 
 Aspect | Stack Memory | Heap Memory
-| - | -| -
+------ | ------------ | -----------
 Stores | Method calls, local primitives, refs | Objects (and their instance variables)
 Size | Smaller, managed per thread | Larger, shared across threads
 Lifetime | Short-lived (until method returns) | Long-lived (until GC collects it)
