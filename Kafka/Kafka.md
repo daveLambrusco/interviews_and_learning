@@ -5,7 +5,7 @@
   - [Partitions](#partitions)
     - [Key Characteristics of Partitions](#key-characteristics-of-partitions)
   - [Producers](#producers)
-    - [Partition Assignment Strategies](#partition-assignment-strategies)
+    - [Partition selection](#partition-selection)
     - [Producer Acknowledgment Modes](#producer-acknowledgment-modes)
     - [Kafka Message Anatomy](#kafka-message-anatomy)
       - [Message Structure](#message-structure)
@@ -28,6 +28,22 @@
   - [Consumers](#consumers)
     - [Consumer Responsibilities](#consumer-responsibilities)
     - [Consumer Groups](#consumer-groups)
+    - [Partition Rebalancing](#partition-rebalancing)
+      - [What Happens When a Consumer Joins](#what-happens-when-a-consumer-joins)
+      - [Rebalancing Protocols](#rebalancing-protocols)
+        - [Eager Rebalance (Stop-the-World)](#eager-rebalance-stop-the-world)
+        - [Incremental Cooperative Rebalance](#incremental-cooperative-rebalance)
+    - [Partition Assignment Strategies](#partition-assignment-strategies)
+      - [RangeAssignor](#rangeassignor)
+      - [RoundRobinAssignor](#roundrobinassignor)
+      - [StickyAssignor](#stickyassignor)
+      - [CooperativeStickyAssignor](#cooperativestickyassignor)
+      - [Assignment Strategy Comparison](#assignment-strategy-comparison)
+    - [Static Group Membership](#static-group-membership)
+      - [Problem with Dynamic Membership](#problem-with-dynamic-membership)
+      - [How Static Membership Works](#how-static-membership-works)
+      - [Static vs Dynamic Membership](#static-vs-dynamic-membership)
+      - [Use Cases for Static Membership](#use-cases-for-static-membership)
     - [Multiple Consumer Groups](#multiple-consumer-groups)
     - [Deserialization](#deserialization)
     - [How Consumers Know What to Read](#how-consumers-know-what-to-read)
@@ -104,7 +120,7 @@ A topic is like a table in a database or a folder in a filesystem: it's a way to
 4. **Batching**: Grouping messages together for efficient network transmission
 5. **Error handling**: Retrying failed sends and handling acknowledgments
 
-### Partition Assignment Strategies
+### Partition selection
 
 When a producer sends a message, it must decide which partition to write to:
 
@@ -423,6 +439,596 @@ Assignment:
 | 2 | 4 | Each consumer reads 2 partitions |
 | 4 | 4 | Each consumer reads 1 partition (ideal) |
 | 6 | 4 | 4 consumers active, 2 idle |
+
+### Partition Rebalancing
+
+**Partition rebalancing** is the process of redistributing partition ownership among consumers in a consumer group when the group membership changes.
+
+#### What Happens When a Consumer Joins
+
+When a new consumer joins a consumer group, Kafka triggers a rebalancing process:
+
+**Basic Flow:**
+
+```md
+Initial State (2 consumers, 4 partitions):
+Consumer A: partitions 0, 1
+Consumer B: partitions 2, 3
+
+Consumer C joins the group:
+1. Group coordinator detects new member
+2. Rebalancing is triggered
+3. All consumers STOP consuming (in eager rebalance)
+4. Partitions are reassigned using the assignment strategy
+5. Consumers resume with new assignments
+
+New State (3 consumers, 4 partitions):
+Consumer A: partition 0
+Consumer B: partition 1
+Consumer C: partitions 2, 3
+```
+
+**Rebalancing Triggers:**
+
+- Consumer joins the group
+- Consumer leaves gracefully (via `close()`)
+- Consumer is considered dead (missed heartbeats)
+- Consumer exceeds `max.poll.interval.ms`
+- Partitions added to subscribed topics
+- Topic subscription changes
+
+#### Rebalancing Protocols
+
+Kafka supports two rebalancing protocols with different characteristics:
+
+##### Eager Rebalance (Stop-the-World)
+
+The traditional rebalancing protocol used by older assignment strategies.
+
+**How It Works:**
+
+```md
+1. Coordinator signals: "Rebalance starting"
+2. ALL consumers revoke ALL their partitions immediately
+3. Consumers rejoin the group
+4. New partition assignment is computed
+5. Partitions are reassigned to consumers
+6. Consumers start consuming from new assignments
+```
+
+**Timeline Example:**
+
+```md
+t=0s: Consumer C joins
+t=1s: Rebalance triggered, all consumers stop
+t=2s: All partitions revoked
+t=3s: New assignment calculated
+t=4s: Partitions reassigned
+t=5s: All consumers resume
+
+Total downtime: ~5 seconds for ALL consumers
+```
+
+**Characteristics:**
+
+- ❌ **Complete downtime**: All consumers stop processing during rebalance
+- ❌ **Slow**: Must wait for all consumers to stop and rejoin
+- ❌ **Inefficient**: Even consumers keeping their partitions must stop
+- ❌ **Stop-the-world**: No consumption happens during rebalance
+- ✅ **Simple**: Easier to implement and reason about
+- ✅ **Proven**: Well-tested, stable protocol
+
+**Used By:**
+
+- `RangeAssignor`
+- `RoundRobinAssignor`
+- `StickyAssignor`
+
+##### Incremental Cooperative Rebalance
+
+Modern protocol introduced in Kafka 2.4+ that minimizes downtime.
+
+**How It Works:**
+
+```md
+1. Coordinator signals: "Rebalance starting"
+2. Only partitions being MOVED are revoked
+3. Consumers keep consuming from stable partitions
+4. Revoked partitions are reassigned
+5. Second short rebalance to finalize (if needed)
+```
+
+**Two-Phase Process:**
+
+**Phase 1 - Identify and revoke partitions to be moved:**
+
+```md
+Consumer A: keeps partitions 0, 1 (continues consuming)
+Consumer B: revokes partition 3 (stops only this partition)
+Consumer C: ready to receive partitions
+```
+
+**Phase 2 - Assign revoked partitions:**
+
+```md
+Consumer A: keeps partitions 0, 1 (never stopped)
+Consumer B: keeps partition 2 (never stopped)
+Consumer C: receives partition 3
+```
+
+**Timeline Example:**
+
+```md
+t=0.0s: Consumer C joins
+t=0.5s: Phase 1 - identify partitions to move (partition 3)
+t=1.0s: Only partition 3 stops consuming
+t=1.5s: Phase 2 - partition 3 assigned to Consumer C
+t=2.0s: All consumers active
+
+Downtime: ~0.5s for partition 3 only, others never stopped
+```
+
+**Characteristics:**
+
+- ✅ **Minimal downtime**: Only moving partitions stop briefly
+- ✅ **Fast**: Most consumers continue working throughout
+- ✅ **Efficient**: Preserves existing assignments where possible
+- ✅ **Graceful**: No stop-the-world pause
+- ⚠️ **Two rebalances**: But each is very short
+- ⚠️ **Requires support**: All consumers must use compatible assignor
+
+**Used By:**
+
+- `CooperativeStickyAssignor`
+
+**Visual Comparison:**
+
+```md
+EAGER REBALANCE:
+[All consumers working] → [ALL STOP - nobody consuming] → [All restart]
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                          Complete downtime period
+
+COOPERATIVE REBALANCE:
+[All consumers working] → [Most keep working continuously] → [All working]
+                          [Only partition 3 pauses briefly]
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                          Minimal targeted downtime
+```
+
+### Partition Assignment Strategies
+
+The `partition.assignment.strategy` configuration determines how partitions are distributed among consumers in a group.
+
+#### RangeAssignor
+
+**Default strategy** - assigns partitions in contiguous ranges.
+
+**Algorithm:**
+
+```java
+// For each topic independently:
+// 1. Sort partitions numerically (0, 1, 2, ...)
+// 2. Sort consumers alphabetically
+// 3. Divide partitions into ranges
+// 4. Assign each range to a consumer
+```
+
+**Example:**
+
+```md
+Topic "orders" with 10 partitions (0-9), 3 consumers:
+
+Consumer-1: partitions 0, 1, 2, 3    (4 partitions)
+Consumer-2: partitions 4, 5, 6       (3 partitions)
+Consumer-3: partitions 7, 8, 9       (3 partitions)
+```
+
+**Multi-Topic Problem:**
+
+```md
+Consumer A and B both subscribe to: topic1, topic2, topic3
+Each topic has 3 partitions
+
+RangeAssignor assigns PER TOPIC:
+
+Consumer A:
+- topic1: partitions 0, 1 (2/3)
+- topic2: partitions 0, 1 (2/3)
+- topic3: partitions 0, 1 (2/3)
+Total: 6 partitions
+
+Consumer B:
+- topic1: partition 2 (1/3)
+- topic2: partition 2 (1/3)
+- topic3: partition 2 (1/3)
+Total: 3 partitions
+
+Result: Imbalanced! Consumer A has 2× the load
+```
+
+**Configuration:**
+
+```java
+props.put("partition.assignment.strategy", 
+    "org.apache.kafka.clients.consumer.RangeAssignor");
+```
+
+**Characteristics:**
+
+- Uses **eager rebalance** (stop-the-world)
+- Works per-topic independently
+- Can cause imbalance with multiple topics
+- Predictable partition assignment
+- Default strategy (for backward compatibility)
+
+#### RoundRobinAssignor
+
+**Distributes partitions evenly** across all consumers in round-robin fashion.
+
+**Algorithm:**
+
+```java
+// 1. Create sorted list of ALL topic-partitions across ALL topics
+// 2. Sort consumers alphabetically
+// 3. Assign partitions one-by-one to consumers in rotation
+```
+
+**Example:**
+
+```md
+Topic "orders" (5 partitions) + "payments" (3 partitions)
+2 consumers
+
+Sorted partitions: orders-0, orders-1, orders-2, orders-3, orders-4,
+                   payments-0, payments-1, payments-2
+
+Consumer-1: orders-0, orders-2, orders-4, payments-1
+Consumer-2: orders-1, orders-3, payments-0, payments-2
+
+Result: Balanced! Each consumer has 4 partitions
+```
+
+**Configuration:**
+
+```java
+props.put("partition.assignment.strategy", 
+    "org.apache.kafka.clients.consumer.RoundRobinAssignor");
+```
+
+**Characteristics:**
+
+- Uses **eager rebalance** (stop-the-world)
+- Considers all topics together
+- Better balance than RangeAssignor
+- Requires all consumers subscribe to the same topics
+- Even distribution of load
+
+#### StickyAssignor
+
+**Minimizes partition movement** during rebalancing by preserving existing assignments.
+
+**Goals:**
+
+1. Balance partitions across consumers as evenly as possible
+2. Preserve as many existing assignments as possible during rebalance
+
+**Example - Consumer Failure:**
+
+```md
+Initial State (9 partitions, 3 consumers):
+Consumer A: 0, 1, 2
+Consumer B: 3, 4, 5
+Consumer C: 6, 7, 8
+
+Consumer B fails:
+
+Eager RangeAssignor would reassign everything:
+Consumer A: 0, 1, 2, 3, 4    (all reassigned)
+Consumer C: 5, 6, 7, 8       (all reassigned)
+Movement: ALL 9 partitions
+
+StickyAssignor preserves existing:
+Consumer A: 0, 1, 2, 3, 4    (keeps 0,1,2 + adds 3,4)
+Consumer C: 6, 7, 8, 5       (keeps 6,7,8 + adds 5)
+Movement: Only 3 partitions (3, 4, 5)
+```
+
+**Benefits:**
+
+- Reduces state transfer overhead
+- Faster recovery from rebalances
+- Preserves consumer-local caches/state
+- More balanced than RoundRobinAssignor
+
+**Configuration:**
+
+```java
+props.put("partition.assignment.strategy", 
+    "org.apache.kafka.clients.consumer.StickyAssignor");
+```
+
+**Characteristics:**
+
+- Uses **eager rebalance** (stop-the-world)
+- Minimizes partition movement
+- More complex computation
+- Better for stateful consumers
+- Reduces rebalance impact
+
+#### CooperativeStickyAssignor
+
+**Recommended for production** - combines sticky assignment with incremental cooperative rebalancing.
+
+**Algorithm:** Same as StickyAssignor but uses cooperative rebalancing protocol.
+
+**Example - Consumer Joins:**
+
+```md
+Initial State (6 partitions, 2 consumers):
+Consumer A: 0, 1, 2
+Consumer B: 3, 4, 5
+
+Consumer C joins:
+
+Phase 1 (identify what to move):
+Consumer A: keeps 0, 1 (consuming), revokes 2
+Consumer B: keeps 3, 4 (consuming), revokes 5
+Consumer C: ready to receive
+
+Phase 2 (reassign):
+Consumer A: 0, 1           (never stopped consuming these!)
+Consumer B: 3, 4           (never stopped consuming these!)
+Consumer C: 2, 5           (receives revoked partitions)
+
+Result: 4 partitions never stopped, 2 partitions briefly paused
+```
+
+**Configuration:**
+
+```java
+props.put("partition.assignment.strategy", 
+    "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
+```
+
+**Characteristics:**
+
+- ✅ Uses **incremental cooperative rebalance** (minimal downtime)
+- ✅ Sticky assignment (preserves existing assignments)
+- ✅ **Best for production** - minimal disruption
+- ✅ Perfect for rolling restarts
+- ✅ Reduces consumer lag spikes
+- ⚠️ Requires all consumers in group to support it
+- ⚠️ Available since Kafka 2.4+
+
+#### Assignment Strategy Comparison
+
+| Strategy | Rebalance | Balance | Stability | Downtime | Use Case |
+| -------- | --------- | ------- | --------- | -------- | -------- |
+| **RangeAssignor** | Eager | Fair | Low | High | Simple, single-topic |
+| **RoundRobinAssignor** | Eager | Good | Low | High | Multi-topic balance |
+| **StickyAssignor** | Eager | Good | High | High | Minimize movement |
+| **CooperativeStickyAssignor** | Cooperative | Good | High | **Minimal** | **Production** |
+
+**Multiple Strategies (Fallback):**
+
+You can configure multiple strategies for compatibility:
+
+```java
+props.put("partition.assignment.strategy", 
+    "org.apache.kafka.clients.consumer.CooperativeStickyAssignor," +
+    "org.apache.kafka.clients.consumer.RangeAssignor");
+```
+
+- Consumers try strategies in order
+- All consumers must share at least one common strategy
+- Used during rolling upgrades to new assignors
+
+### Static Group Membership
+
+**Static group membership** (introduced in Kafka 2.3) prevents unnecessary rebalancing when consumers temporarily disconnect.
+
+#### Problem with Dynamic Membership
+
+**Default behavior** (dynamic membership) treats every consumer restart as a new member:
+
+```md
+1. Consumer A crashes
+2. Coordinator waits for session.timeout.ms (default: 10s)
+3. Timeout expires → Rebalance #1 triggered
+4. Partitions redistributed to remaining consumers
+5. Consumer A restarts after 8 seconds
+6. Treated as NEW member → Rebalance #2 triggered
+7. Partitions redistributed again
+
+Result: TWO rebalances for a single restart!
+Total disruption: ~25 seconds
+```
+
+**Why This Happens:**
+
+- Each consumer gets a random `member.id` on startup
+- Kafka can't tell if restarted consumer is the "same" consumer
+- Every restart = new member = new rebalance
+
+#### How Static Membership Works
+
+**Configuration:**
+
+```java
+Properties props = new Properties();
+props.put("group.id", "my-consumer-group");
+props.put("group.instance.id", "consumer-1");  // Static identity
+props.put("session.timeout.ms", "300000");     // 5 minutes
+```
+
+**Key Concept:** `group.instance.id` provides a **persistent identity** that survives restarts.
+
+**Behavior:**
+
+```md
+1. Consumer A (instance ID: "consumer-1") crashes
+2. Coordinator marks partitions as temporarily unavailable
+3. NO rebalance triggered yet
+4. Consumer A restarts within session.timeout.ms
+5. Rejoins with SAME group.instance.id
+6. Kafka recognizes it as the same consumer
+7. Partitions automatically reassigned to Consumer A
+8. NO rebalance needed!
+
+Result: ZERO rebalances
+Downtime: Only for Consumer A's partitions during restart
+```
+
+#### Static vs Dynamic Membership
+
+**Dynamic (Default):**
+
+```java
+// No group.instance.id configured
+// Consumer gets random member.id each time
+
+Startup #1: member.id = "consumer-c6a2f4" (random)
+Restart:    member.id = "consumer-b9d81e" (different!)
+
+→ Kafka treats restart as new member
+→ Rebalance triggered
+```
+
+**Static:**
+
+```java
+props.put("group.instance.id", "consumer-1");
+
+Startup #1: group.instance.id = "consumer-1"
+Restart:    group.instance.id = "consumer-1" (same!)
+
+→ Kafka recognizes as same consumer
+→ No rebalance if within timeout
+```
+
+**Comparison Table:**
+
+| Scenario | Dynamic Membership | Static Membership |
+| -------- | ----------------- | ---------------- |
+| Consumer crashes | Wait timeout → Rebalance | Partitions frozen |
+| Consumer restarts quickly | New member → Another rebalance | Resumes with same partitions |
+| Total rebalances | 2 rebalances | 0 rebalances |
+| Downtime | All consumers pause 2× | Only crashed consumer's partitions |
+| Failover speed | Fast (after timeout) | Slow (wait for timeout) |
+| Good for | Auto-scaling, fast failover | Planned restarts, rolling deploys |
+
+#### Use Cases for Static Membership
+
+**1. Rolling Restarts:**
+
+```md
+3 consumers with static IDs:
+- consumer-1: partitions 0, 1
+- consumer-2: partitions 2, 3
+- consumer-3: partitions 4, 5
+
+Rolling restart process:
+1. Stop consumer-1 → partitions 0,1 paused (not reassigned)
+2. Restart consumer-1 → immediately resumes 0,1
+3. Stop consumer-2 → partitions 2,3 paused
+4. Restart consumer-2 → immediately resumes 2,3
+5. Stop consumer-3 → partitions 4,5 paused
+6. Restart consumer-3 → immediately resumes 4,5
+
+Result: Zero rebalances, smooth rolling deployment!
+```
+
+**2. Kubernetes StatefulSets:**
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka-consumer
+spec:
+  serviceName: "kafka-consumer"
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: consumer
+        env:
+        - name: GROUP_INSTANCE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name  # kafka-consumer-0, kafka-consumer-1, kafka-consumer-2
+        - name: SESSION_TIMEOUT_MS
+          value: "300000"  # 5 minutes for pod restarts
+```
+
+**3. Scheduled Maintenance:**
+
+```md
+1. Set high session.timeout.ms (e.g., 30 minutes)
+2. Take consumer offline for maintenance
+3. Perform updates, configuration changes, etc.
+4. Restart consumer within timeout window
+5. Consumer resumes with same partitions automatically
+```
+
+**Configuration Best Practices:**
+
+```java
+Properties props = new Properties();
+props.put("group.id", "order-processing");
+
+// Must be UNIQUE per consumer in the group
+props.put("group.instance.id", getHostname() + "-" + getProcessId());
+// Example: "prod-server-01-12345"
+
+// Set timeout appropriate for restart duration
+props.put("session.timeout.ms", "300000");  // 5 minutes for deployment
+
+// Recommended: Use cooperative rebalancing
+props.put("partition.assignment.strategy",
+    "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
+```
+
+**Important Rules:**
+
+1. **Uniqueness**: Each consumer needs a unique `group.instance.id` within the group
+2. **Persistence**: The ID should survive restarts (hostname, pod name, etc.)
+3. **Timeout**: Set `session.timeout.ms` longer than expected restart time
+4. **Cannot change**: Cannot modify `group.instance.id` while consumer is active
+5. **Manual cleanup**: If consumer is permanently removed, must wait for timeout
+
+**Advantages:**
+
+- ✅ Eliminates rebalance storms during rolling deployments
+- ✅ Reduces consumer group instability
+- ✅ Perfect for container orchestration (Kubernetes, ECS)
+- ✅ Preserves consumer-local state during restarts
+- ✅ Predictable partition assignment
+
+**Disadvantages:**
+
+- ❌ **Slower failover**: Must wait for full timeout before reassignment
+- ❌ **Partitions unassigned during downtime**: No consumption until restart or timeout
+- ❌ **Increased lag**: Partitions don't get reassigned immediately
+- ❌ **Manual management**: Need to track instance IDs
+- ❌ **Not for auto-scaling**: Adding/removing consumers still triggers rebalance
+
+**When to Use Static Membership:**
+
+- ✅ Short, planned restarts (deployments, upgrades)
+- ✅ Rolling updates in production
+- ✅ Stable, long-running consumers
+- ✅ Container environments with predictable identities
+- ✅ When consumer restart is faster than rebalancing
+
+**When NOT to Use:**
+
+- ❌ Auto-scaling scenarios (dynamic membership better)
+- ❌ When fast failover is critical
+- ❌ Short-lived, ephemeral consumers
+- ❌ High consumer churn environments
+- ❌ When immediate reassignment is required
 
 ### Multiple Consumer Groups
 
