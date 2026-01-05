@@ -25,6 +25,22 @@
       - [Hash Collisions](#hash-collisions)
       - [Custom Hashing](#custom-hashing)
       - [Important Considerations](#important-considerations)
+    - [Producer Timeouts and Retries](#producer-timeouts-and-retries)
+      - [Producer Timeout Properties](#producer-timeout-properties)
+      - [delivery.timeout.ms](#deliverytimeoutms)
+      - [Producer Batching: batch.size and linger.ms](#producer-batching-batchsize-and-lingerms)
+      - [Producer Retries](#producer-retries)
+      - [Retry Behavior](#retry-behavior)
+      - [Timeout and Retry Relationship](#timeout-and-retry-relationship)
+      - [Best Practices](#best-practices)
+    - [Idempotent Producers](#idempotent-producers)
+      - [The Problem: Duplicate Messages](#the-problem-duplicate-messages)
+      - [How Idempotence Works](#how-idempotence-works)
+      - [Enabling Idempotence](#enabling-idempotence)
+      - [enable.idempotence Configuration](#enableidempotence-configuration)
+      - [Required Settings for Idempotence](#required-settings-for-idempotence)
+      - [Trade-offs](#trade-offs)
+      - [When to Use Idempotent Producers](#when-to-use-idempotent-producers)
   - [Consumers](#consumers)
     - [Consumer Responsibilities](#consumer-responsibilities)
     - [Consumer Groups](#consumer-groups)
@@ -394,6 +410,638 @@ public class CustomPartitioner implements Partitioner {
 - **Null keys** are not hashed - they use sticky partitioning instead
 - The hash is computed on the **serialized byte array**, not the original object
 - Different serializers for the same logical key may produce different hashes
+
+### Producer Timeouts and Retries
+
+Kafka producers have built-in timeout and retry mechanisms to handle transient failures and ensure reliable message delivery.
+
+#### Producer Timeout Properties
+
+Kafka producers have several timeout-related configurations:
+
+1. **delivery.timeout.ms** (default: 120,000 ms = 2 minutes)
+   - Upper bound on the time to report success or failure after `send()` is called
+   - Includes time for retries, serialization, partitioning, compression, and waiting for acknowledgments
+   - Should be >= `linger.ms + request.timeout.ms`
+
+2. **request.timeout.ms** (default: 30,000 ms = 30 seconds)
+   - Maximum time the client waits for a response from the broker for a single request
+   - Does not include retries
+   - If no response within this time, the request fails or is retried
+
+3. **linger.ms** (default: 0 ms)
+   - How long to wait before sending a batch to allow more messages to accumulate
+   - Increases throughput by batching but adds latency
+
+4. **max.block.ms** (default: 60,000 ms = 1 minute)
+   - How long `send()` and `partitionsFor()` will block when the buffer is full
+   - Blocks the calling thread, not the network thread
+
+#### delivery.timeout.ms
+
+**delivery.timeout.ms** is the most important timeout configuration for producers. It controls the total time from when `send()` is called until the producer either receives an acknowledgment or gives up.
+
+**What it includes:**
+
+```md
+delivery.timeout.ms =
+  Time waiting in buffer (linger.ms)
+  + Time for serialization/compression
+  + Time for partitioner to assign partition
+  + Time sending to broker (request.timeout.ms)
+  + Time for retries (retries × retry.backoff.ms)
+  + Time waiting for acknowledgment
+```
+
+**Configuration Example:**
+
+```java
+Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+
+// Set delivery timeout to 2 minutes
+props.put("delivery.timeout.ms", 120000);
+
+// Set request timeout to 30 seconds
+props.put("request.timeout.ms", 30000);
+
+// Set linger time to 10ms for better batching
+props.put("linger.ms", 10);
+
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+```
+
+**Behavior:**
+
+- If the message cannot be delivered within `delivery.timeout.ms`, the producer returns a **TimeoutException**
+- The producer will automatically retry failed requests within this timeout window
+- Once the timeout expires, no more retries will be attempted
+
+#### Producer Batching: batch.size and linger.ms
+
+Kafka producers batch multiple messages together to improve throughput and efficiency. Two key properties control batching behavior:
+
+**batch.size** (default: 16,384 bytes = 16 KB)
+
+- Maximum size in bytes of a batch of messages sent to a single partition
+- The producer groups messages destined for the same partition into batches
+- Once a batch reaches this size, it's sent immediately (regardless of `linger.ms`)
+- Does not limit individual message size - messages larger than `batch.size` are sent individually
+- Larger batch sizes improve throughput but use more memory
+
+**linger.ms** (default: 0 ms)
+
+- Time to wait for additional messages before sending a batch
+- If set to 0 (default), batches are sent as soon as possible
+- Higher values allow more messages to accumulate, improving batching efficiency
+- Adds artificial latency but increases throughput
+
+**How Batching Works:**
+
+```md
+Producer receives messages → Accumulates in batch buffer
+                                      |
+                                      v
+                    Batch is sent when EITHER condition is met:
+                    1. batch.size limit reached (e.g., 16 KB)
+                    2. linger.ms timeout expires (e.g., 10 ms)
+                                      |
+                                      v
+                    Batch sent to broker → Acknowledgment received
+```
+
+**Example Scenarios:**
+
+**Scenario 1: batch.size reached first**
+
+```md
+Settings: batch.size=16KB, linger.ms=100ms
+
+Time 0ms:   Message 1 (5 KB) arrives → Added to batch
+Time 20ms:  Message 2 (6 KB) arrives → Added to batch (total: 11 KB)
+Time 40ms:  Message 3 (7 KB) arrives → Added to batch (total: 18 KB)
+            ↳ Batch size exceeds 16 KB → Batch sent immediately!
+            (linger.ms timer not used)
+```
+
+**Scenario 2: linger.ms expires first**
+
+```md
+Settings: batch.size=16KB, linger.ms=10ms
+
+Time 0ms:   Message 1 (2 KB) arrives → Added to batch, timer starts
+Time 5ms:   Message 2 (3 KB) arrives → Added to batch (total: 5 KB)
+Time 10ms:  No more messages, linger.ms expires
+            ↳ Batch sent with 5 KB (below batch.size limit)
+```
+
+**Configuration Example:**
+
+```java
+Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+
+// Configure batching for high throughput
+props.put("batch.size", 32768);  // 32 KB batches
+props.put("linger.ms", 10);       // Wait up to 10ms for more messages
+
+// Buffer memory for all batches (across all partitions)
+props.put("buffer.memory", 33554432);  // 32 MB total buffer
+
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+```
+
+**Relationship Between batch.size and linger.ms:**
+
+| batch.size | linger.ms | Behavior | Use Case |
+|------------|-----------|----------|----------|
+| 16 KB (default) | 0 (default) | Send immediately when possible | Low latency, default behavior |
+| 32 KB | 0 | Send when batch fills | Balance latency and throughput |
+| 16 KB | 10-100 ms | Wait for more messages | Higher throughput, acceptable latency |
+| 64 KB | 10-20 ms | Maximum batching | Bulk data ingestion, high throughput |
+| 16 KB | 1000 ms | Aggressive batching | Batch processing, latency not critical |
+
+**Memory Considerations:**
+
+Batches consume memory from the producer's buffer:
+
+```md
+Total memory usage ≈ batch.size × number_of_active_partitions
+
+Example:
+- batch.size = 32 KB
+- Writing to 100 partitions
+- Memory needed ≈ 32 KB × 100 = 3.2 MB (minimum)
+
+Actual memory controlled by buffer.memory (default: 32 MB)
+```
+
+**buffer.memory** (default: 33,554,432 bytes = 32 MB)
+
+- Total memory available for buffering unsent messages
+- Shared across all partitions and batches
+- When full, `send()` will block up to `max.block.ms` before throwing an exception
+- Should be large enough to handle: `batch.size × active_partitions + overhead`
+
+**Tuning Guidelines:**
+
+**For Low Latency (Real-time applications):**
+
+```java
+props.put("batch.size", 16384);    // 16 KB (default)
+props.put("linger.ms", 0);         // No waiting (default)
+props.put("compression.type", "none");  // No compression overhead
+
+// Messages sent immediately, minimal batching
+// Latency: < 5 ms
+// Throughput: Moderate
+```
+
+**For High Throughput (Bulk data, analytics):**
+
+```java
+props.put("batch.size", 65536);    // 64 KB
+props.put("linger.ms", 10);        // Wait 10ms for more messages
+props.put("compression.type", "lz4");  // Fast compression
+props.put("buffer.memory", 67108864);  // 64 MB buffer
+
+// More efficient batching, better compression
+// Latency: 10-20 ms
+// Throughput: High (3-5x improvement)
+```
+
+**For Balanced Performance (Most applications):**
+
+```java
+props.put("batch.size", 32768);    // 32 KB
+props.put("linger.ms", 5);         // Wait 5ms
+props.put("compression.type", "snappy");  // Good compression/speed ratio
+
+// Good balance of latency and throughput
+// Latency: 5-10 ms
+// Throughput: Good (2-3x improvement)
+```
+
+**Monitoring Batching Performance:**
+
+Key metrics to track:
+
+1. **batch-size-avg**: Average batch size in bytes
+   - Should be close to `batch.size` for high throughput scenarios
+   - Low values indicate poor batching efficiency
+
+2. **record-queue-time-avg**: Average time messages wait in buffer
+   - Should be close to `linger.ms` when batches fill regularly
+   - High values may indicate backpressure or slow brokers
+
+3. **records-per-request-avg**: Average number of records per request
+   - Higher is better for throughput
+   - Low values (< 10) suggest poor batching
+
+4. **compression-rate-avg**: Compression ratio achieved
+   - Only relevant if compression is enabled
+   - Higher values indicate better compression
+
+**Common Mistakes:**
+
+❌ **Setting batch.size too small:**
+
+```java
+props.put("batch.size", 1024);  // Only 1 KB - too small!
+// Result: Many small requests, poor throughput, high CPU usage
+```
+
+❌ **Setting linger.ms too high for latency-sensitive apps:**
+
+```java
+props.put("linger.ms", 1000);  // 1 second delay!
+// Result: Unacceptable latency for real-time applications
+```
+
+❌ **Not considering buffer.memory with many partitions:**
+
+```java
+props.put("batch.size", 65536);  // 64 KB
+props.put("buffer.memory", 32768);  // Only 32 KB total!
+// Result: Buffer fills immediately, frequent blocking
+```
+
+✅ **Correct Configuration:**
+
+```java
+props.put("batch.size", 32768);         // 32 KB batches
+props.put("linger.ms", 10);             // 10ms batching window
+props.put("buffer.memory", 67108864);   // 64 MB (ample space)
+props.put("compression.type", "lz4");   // Fast compression
+```
+
+**Best Practices:**
+
+1. **Start with defaults** (batch.size=16KB, linger.ms=0) and tune based on metrics
+
+2. **Increase batch.size for high-throughput scenarios**: 32-64 KB works well for most cases
+
+3. **Add small linger.ms for throughput**: 5-20ms typically provides good batching with acceptable latency
+
+4. **Enable compression**: Use `lz4` or `snappy` for better network utilization with batching
+
+5. **Scale buffer.memory with partitions**: Ensure `buffer.memory >= batch.size × active_partitions × 2`
+
+6. **Test under load**: Measure `batch-size-avg` and `records-per-request-avg` to verify batching is effective
+
+7. **Consider producer lifecycle**: Long-lived producers benefit more from batching than short-lived ones
+
+#### Producer Retries
+
+Kafka producers automatically retry failed requests to handle transient network issues and temporary broker failures.
+
+**Key Retry Properties:**
+
+1. **retries** (default: Integer.MAX_VALUE in Kafka 2.1+)
+   - Maximum number of retry attempts for a failed request
+   - In older versions (< 2.1), default was 0 (no retries)
+   - Set to a high value or Integer.MAX_VALUE to rely on `delivery.timeout.ms` instead
+
+2. **retry.backoff.ms** (default: 100 ms)
+   - Time to wait between retry attempts
+   - Prevents overwhelming the broker with rapid retries
+   - Exponential backoff is not used by default (constant wait time)
+
+3. **max.in.flight.requests.per.connection** (default: 5)
+   - Maximum number of unacknowledged requests the client will send on a single connection
+   - Setting this to 1 ensures strict ordering (but reduces throughput)
+   - With idempotence enabled, can be up to 5 while maintaining ordering
+
+**Configuration Example:**
+
+```java
+Properties props = new Properties();
+
+// Set maximum retries (default is already very high)
+props.put("retries", Integer.MAX_VALUE);
+
+// Set retry backoff to 200ms
+props.put("retry.backoff.ms", 200);
+
+// Maximum 5 in-flight requests (default)
+props.put("max.in.flight.requests.per.connection", 5);
+```
+
+#### Retry Behavior
+
+**Retriable Errors:**
+
+The producer automatically retries for these transient errors:
+
+- Network timeouts
+- Broker not available
+- Leader not available (during leader election)
+- Not enough replicas
+- Request timed out on broker
+
+**Non-Retriable Errors:**
+
+These errors cause immediate failure without retries:
+
+- Message too large
+- Invalid topic or partition
+- Authorization failures
+- Serialization errors
+- Message exceeds max size
+
+**Example with Callbacks:**
+
+```java
+ProducerRecord<String, String> record = 
+    new ProducerRecord<>("my-topic", "key", "value");
+
+producer.send(record, new Callback() {
+    @Override
+    public void onCompletion(RecordMetadata metadata, Exception exception) {
+        if (exception != null) {
+            if (exception instanceof RetriableException) {
+                // This was retried but ultimately failed
+                System.err.println("Failed after retries: " + exception.getMessage());
+            } else {
+                // This failed immediately (non-retriable)
+                System.err.println("Non-retriable failure: " + exception.getMessage());
+            }
+        } else {
+            System.out.println("Message sent successfully to partition " + 
+                             metadata.partition() + " at offset " + metadata.offset());
+        }
+    }
+});
+```
+
+#### Timeout and Retry Relationship
+
+```md
+delivery.timeout.ms controls the OVERALL time limit
+└── Multiple retries can happen within this window
+    ├── Retry 1: Send → Wait (retry.backoff.ms) → Retry if failed
+    ├── Retry 2: Send → Wait (retry.backoff.ms) → Retry if failed
+    ├── Retry N: Send → Wait (retry.backoff.ms) → Retry if failed
+    └── Stop when either:
+        • Success (acknowledgment received)
+        • delivery.timeout.ms expires
+        • Non-retriable error occurs
+```
+
+**Important Notes:**
+
+- Setting `retries=0` disables retries completely (not recommended)
+- Setting `retries` to a high value is safe because `delivery.timeout.ms` acts as the upper bound
+- Each retry consumes time from the `delivery.timeout.ms` budget
+
+#### Best Practices
+
+1. **Use defaults for most cases**: The default settings (high retries, 2-minute delivery timeout) work well for most applications
+
+2. **Adjust delivery.timeout.ms based on your SLA**: If you need faster failure detection, reduce it; if you want more resilience, increase it
+
+3. **Don't set retries to 0**: Always allow retries unless you have a specific reason not to
+
+4. **Monitor retry metrics**: Track `record-retry-rate` and `record-error-rate` metrics to detect issues
+
+5. **Use callbacks or Futures**: Always handle the result of `send()` to detect failures:
+
+   ```java
+   // Using Future
+   Future<RecordMetadata> future = producer.send(record);
+   try {
+       RecordMetadata metadata = future.get(); // Block until complete
+   } catch (ExecutionException e) {
+       // Handle failure
+   }
+   
+   // Using Callback (better for async)
+   producer.send(record, (metadata, exception) -> {
+       if (exception != null) {
+           // Handle failure
+       }
+   });
+   ```
+
+6. **Balance throughput and ordering**: If strict ordering is critical, set `max.in.flight.requests.per.connection=1` or enable idempotence
+
+### Idempotent Producers
+
+**Idempotent producers** ensure that messages are delivered exactly once to a particular partition, even in the presence of retries. This prevents duplicate messages caused by network failures or broker crashes.
+
+#### The Problem: Duplicate Messages
+
+Without idempotence, retries can cause duplicates:
+
+```md
+Scenario: Network timeout during acknowledgment
+
+1. Producer sends message "A" to broker
+2. Broker successfully writes message "A" to partition
+3. Broker sends acknowledgment back to producer
+4. Network failure: acknowledgment is lost
+5. Producer times out and retries
+6. Producer sends message "A" again
+7. Broker writes duplicate message "A" to partition
+
+Result: Message "A" is written twice with different offsets
+```
+
+**Impact:**
+
+- Consumers may process the same message multiple times
+- Analytics and aggregations may be incorrect
+- Idempotency violations in downstream systems
+
+#### How Idempotence Works
+
+Kafka uses a combination of **Producer ID** and **sequence numbers** to detect and reject duplicates:
+
+1. **Producer ID (PID)**: Each producer is assigned a unique ID by the broker
+2. **Sequence Number**: Each message from a producer to a partition gets an incremental sequence number
+3. **Broker tracking**: Brokers track the last sequence number received from each producer for each partition
+4. **Duplicate detection**: If a broker receives a message with a sequence number it has already seen, it acknowledges it but doesn't write it again
+
+**Message Flow with Idempotence:**
+
+```md
+1. Producer requests a Producer ID (PID) from broker
+   → Broker assigns PID: 12345
+
+2. Producer sends message with metadata:
+   {
+     key: "user-1",
+     value: "login",
+     PID: 12345,
+     epoch: 0,
+     sequence: 0
+   }
+
+3. Broker writes message and remembers: PID 12345, Partition 0, Sequence 0
+
+4. Acknowledgment is lost due to network issue
+
+5. Producer retries with same metadata:
+   {
+     key: "user-1",
+     value: "login",
+     PID: 12345,
+     epoch: 0,
+     sequence: 0  ← Same sequence number!
+   }
+
+6. Broker detects duplicate (sequence 0 already processed)
+   → Sends acknowledgment without writing duplicate
+   → Producer receives success response
+
+Result: Message written exactly once, even though it was sent twice
+```
+
+#### Enabling Idempotence
+
+Idempotence is enabled with a single configuration:
+
+```java
+Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+
+// Enable idempotence
+props.put("enable.idempotence", "true");
+
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+```
+
+**Note:** In Kafka 3.0+, idempotence is **enabled by default** (`enable.idempotence=true`).
+
+#### enable.idempotence Configuration
+
+When you enable idempotence, Kafka automatically adjusts related settings to ensure safety:
+
+**Automatic Configuration Changes:**
+
+| Property | Default Value | With Idempotence | Reason |
+|----------|--------------|------------------|--------|
+| `acks` | 1 | **all** | Ensures all in-sync replicas confirm write |
+| `retries` | 0 (old) / MAX_INT (new) | **MAX_INT** | Allows unlimited retries within timeout |
+| `max.in.flight.requests.per.connection` | 5 | **≤ 5** | Maintains ordering with sequence numbers |
+
+**Why these changes?**
+
+1. **acks=all**: Ensures durability by requiring all ISR replicas to acknowledge
+2. **retries=MAX_INT**: Relies on `delivery.timeout.ms` for retry limits instead of retry count
+3. **max.in.flight.requests ≤ 5**: Allows pipelining while maintaining order using sequence numbers
+
+#### Required Settings for Idempotence
+
+If you manually configure producer settings, idempotence requires:
+
+```java
+Properties props = new Properties();
+props.put("enable.idempotence", "true");
+
+// These are required for idempotence
+props.put("acks", "all");  // Must be "all" or "-1"
+props.put("retries", Integer.MAX_VALUE);  // Must be > 0
+props.put("max.in.flight.requests.per.connection", 5);  // Must be ≤ 5
+```
+
+**If you set incompatible values**, Kafka will throw a `ConfigException`:
+
+```java
+// This will fail!
+props.put("enable.idempotence", "true");
+props.put("acks", "1");  // ERROR: acks must be 'all' with idempotence
+```
+
+**Valid Configurations:**
+
+✅ **Option 1: Simple (recommended)**
+
+```java
+props.put("enable.idempotence", "true");
+// That's it! Other settings are auto-configured
+```
+
+✅ **Option 2: Explicit**
+
+```java
+props.put("enable.idempotence", "true");
+props.put("acks", "all");
+props.put("retries", Integer.MAX_VALUE);
+props.put("max.in.flight.requests.per.connection", 5);
+```
+
+❌ **Invalid Configuration:**
+
+```java
+props.put("enable.idempotence", "true");
+props.put("acks", "1");  // ERROR
+props.put("max.in.flight.requests.per.connection", 10);  // ERROR
+```
+
+#### Trade-offs
+
+**Benefits:**
+
+- ✅ **Exactly-once delivery** to each partition (no duplicates)
+- ✅ **Message ordering** preserved within a partition
+- ✅ **Safe retries** without duplication risk
+- ✅ **Minimal overhead** (just Producer ID and sequence numbers)
+
+**Costs:**
+
+- ⚠️ **Slightly lower throughput** due to `acks=all` requirement
+- ⚠️ **Higher latency** due to waiting for all ISR acknowledgments
+- ⚠️ **Broker state** required to track sequence numbers per producer
+- ⚠️ **Producer ID lifecycle** management (though transparent to application)
+
+**Performance Impact:**
+
+```md
+Typical latency increase: 5-20ms per message
+Throughput reduction: 10-30% compared to acks=1
+
+This is often acceptable for the guarantee of no duplicates.
+```
+
+#### When to Use Idempotent Producers
+
+**Use Idempotence When:**
+
+- ✅ Duplicate messages would cause incorrect results (financial transactions, billing, inventory)
+- ✅ You need exactly-once semantics within Kafka
+- ✅ Message ordering per key is critical
+- ✅ You want safe retries without duplication risk
+- ✅ You're building event sourcing or CQRS systems
+- ✅ Downstream consumers are not idempotent
+
+**Skip Idempotence When:**
+
+- ❌ Duplicates are acceptable (logging, monitoring, best-effort scenarios)
+- ❌ You need absolute maximum throughput at any cost
+- ❌ You're using Kafka < 0.11 (idempotence not available)
+- ❌ Downstream systems handle deduplication themselves
+
+**Best Practice:**
+
+For most production applications, **enable idempotence**. The overhead is minimal, and the safety guarantees are valuable. Since Kafka 3.0+, it's enabled by default, reflecting the community's recommendation.
+
+```java
+// Modern best practice (Kafka 3.0+)
+Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("key.serializer", StringSerializer.class.getName());
+props.put("value.serializer", StringSerializer.class.getName());
+// enable.idempotence defaults to true (no need to set explicitly)
+
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+```
 
 ## Consumers
 
