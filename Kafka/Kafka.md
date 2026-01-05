@@ -29,6 +29,7 @@
       - [Producer Timeout Properties](#producer-timeout-properties)
       - [delivery.timeout.ms](#deliverytimeoutms)
       - [Producer Batching: batch.size and linger.ms](#producer-batching-batchsize-and-lingerms)
+      - [Producer Buffer Management: buffer.memory and max.block.ms](#producer-buffer-management-buffermemory-and-maxblockms)
       - [Producer Retries](#producer-retries)
       - [Retry Behavior](#retry-behavior)
       - [Timeout and Retry Relationship](#timeout-and-retry-relationship)
@@ -694,6 +695,436 @@ props.put("compression.type", "lz4");   // Fast compression
 6. **Test under load**: Measure `batch-size-avg` and `records-per-request-avg` to verify batching is effective
 
 7. **Consider producer lifecycle**: Long-lived producers benefit more from batching than short-lived ones
+
+#### Producer Buffer Management: buffer.memory and max.block.ms
+
+Kafka producers use an internal memory buffer to queue messages before sending them to brokers. Two critical properties control this buffer behavior: `buffer.memory` and `max.block.ms`.
+
+**buffer.memory** (default: 33,554,432 bytes = 32 MB)
+
+- Total amount of memory the producer can use for buffering messages waiting to be sent
+- Shared across **all partitions and batches** the producer is writing to
+- Acts as a pool that holds unsent messages until they can be transmitted
+- Independent of heap memory settings
+
+**max.block.ms** (default: 60,000 ms = 1 minute)
+
+- Maximum time `send()` and `partitionsFor()` methods will **block** when the buffer is full
+- Applies to the calling thread (your application thread), not the I/O thread
+- After this timeout, a `TimeoutException` is thrown
+- Provides backpressure mechanism to prevent overwhelming the producer
+
+**How They Work Together:**
+
+```md
+Application Thread calls producer.send(record)
+          ↓
+    Is buffer full?
+          ↓
+    ┌─────┴─────┐
+    │           │
+   NO          YES
+    │           │
+    │      Block thread up to
+    │      max.block.ms waiting
+    │      for buffer space
+    │           │
+    │      ┌────┴────┐
+    │      │         │
+    │   Space      Timeout
+    │   freed       expires
+    │      │         │
+    └──────┴─────────┘
+           │
+    Add to buffer
+           │
+    Return Future
+```
+
+**Buffer Memory Allocation:**
+
+```md
+buffer.memory (32 MB total)
+├── Batch for Topic A, Partition 0: 16 KB
+├── Batch for Topic A, Partition 1: 16 KB
+├── Batch for Topic A, Partition 2: 16 KB
+├── Batch for Topic B, Partition 0: 16 KB
+├── Batch for Topic B, Partition 1: 16 KB
+├── Compression buffer: ~2 MB
+├── Metadata overhead: ~1 MB
+└── Free space: ~29 MB (available for more batches)
+
+When buffer fills:
+- send() blocks for up to max.block.ms
+- Waiting for I/O thread to send batches and free space
+```
+
+**What Causes Buffer to Fill:**
+
+1. **Slow network/brokers**: Messages produced faster than they can be sent
+2. **High message volume**: Burst of messages exceeds network capacity
+3. **Too many partitions**: Writing to hundreds of partitions simultaneously
+4. **Large messages**: Big messages consume more buffer space
+5. **Broker unavailability**: Network issues prevent sending
+6. **Insufficient buffer.memory**: Buffer too small for workload
+
+**Blocking Behavior Example:**
+
+```java
+Properties props = new Properties();
+props.put("buffer.memory", 1048576);  // Only 1 MB (very small!)
+props.put("max.block.ms", 5000);      // Block max 5 seconds
+props.put("batch.size", 16384);       // 16 KB batches
+
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+
+try {
+    for (int i = 0; i < 10000; i++) {
+        String largeMessage = generateLargeMessage(10000); // 10 KB each
+        
+        // This will block when buffer fills!
+        Future<RecordMetadata> future = producer.send(
+            new ProducerRecord<>("my-topic", "key-" + i, largeMessage)
+        );
+        
+        // After 5 seconds of blocking, throws TimeoutException
+    }
+} catch (BufferExhaustedException e) {
+    System.err.println("Buffer full and max.block.ms exceeded!");
+    // Handle backpressure: slow down, retry, alert, etc.
+}
+```
+
+**Scenario Analysis:**
+
+**Scenario 1: Buffer sufficient**
+
+```md
+Settings:
+- buffer.memory = 64 MB
+- batch.size = 32 KB
+- Producing to 10 partitions
+- Message rate: 1000 msg/sec
+- Network can keep up
+
+Behavior:
+✅ Messages queue in buffer
+✅ Batches sent as they fill
+✅ Buffer never fills
+✅ send() returns immediately
+✅ No blocking occurs
+
+Memory usage: ~10 partitions × 32 KB = ~320 KB (plenty of headroom)
+```
+
+**Scenario 2: Buffer fills temporarily**
+
+```md
+Settings:
+- buffer.memory = 8 MB
+- batch.size = 64 KB  
+- Producing to 50 partitions
+- Burst: 10,000 msg/sec for 5 seconds
+- Network temporarily slow
+
+Behavior:
+⚠️ Buffer fills during burst
+⚠️ send() blocks for ~2 seconds
+⚠️ Network catches up
+⚠️ Buffer drains
+✅ send() resumes normal operation
+
+Memory usage: Peaks at 8 MB, then drains as network sends batches
+```
+
+**Scenario 3: Buffer exhausted**
+
+```md
+Settings:
+- buffer.memory = 4 MB
+- batch.size = 16 KB
+- Producing to 100 partitions
+- Sustained rate: 5000 msg/sec
+- Broker down or network failure
+
+Behavior:
+❌ Buffer fills completely
+❌ send() blocks for max.block.ms (60s)
+❌ Broker still unavailable
+❌ TimeoutException thrown
+❌ Messages not sent
+
+Result: Application must handle exception (retry logic, alerting, etc.)
+```
+
+**Calculating Required buffer.memory:**
+
+```md
+Formula:
+buffer.memory >= (batch.size × active_partitions) + overhead
+
+Example 1 - Small scale:
+- Writing to 10 partitions
+- batch.size = 16 KB
+- Minimum: 10 × 16 KB = 160 KB
+- Recommended: 160 KB × 4 = 640 KB (4× safety margin)
+- Use: 1 MB or default 32 MB
+
+Example 2 - Medium scale:
+- Writing to 100 partitions
+- batch.size = 32 KB
+- Minimum: 100 × 32 KB = 3.2 MB
+- Recommended: 3.2 MB × 4 = 12.8 MB
+- Use: 16 MB or 32 MB
+
+Example 3 - Large scale:
+- Writing to 1000 partitions
+- batch.size = 64 KB
+- Minimum: 1000 × 64 KB = 64 MB
+- Recommended: 64 MB × 4 = 256 MB
+- Use: 256 MB or 512 MB
+
+Overhead typically includes:
+- Compression buffers (~2-5 MB)
+- Metadata structures (~1-2 MB)
+- In-flight requests (~2-5 MB)
+```
+
+**Configuration Examples:**
+
+**For Low Partition Count (< 20 partitions):**
+
+```java
+props.put("buffer.memory", 33554432);    // 32 MB (default is fine)
+props.put("max.block.ms", 60000);        // 1 minute (default)
+props.put("batch.size", 16384);          // 16 KB
+
+// Total buffer needed: ~20 × 16 KB = 320 KB
+// 32 MB provides ample headroom
+```
+
+**For High Partition Count (100-500 partitions):**
+
+```java
+props.put("buffer.memory", 67108864);    // 64 MB
+props.put("max.block.ms", 30000);        // 30 seconds (faster failure)
+props.put("batch.size", 32768);          // 32 KB
+
+// Total buffer needed: ~500 × 32 KB = 16 MB
+// 64 MB provides 4× safety margin
+```
+
+**For Very High Partition Count (1000+ partitions):**
+
+```java
+props.put("buffer.memory", 268435456);   // 256 MB
+props.put("max.block.ms", 10000);        // 10 seconds (fail fast)
+props.put("batch.size", 65536);          // 64 KB
+
+// Total buffer needed: ~1000 × 64 KB = 64 MB
+// 256 MB provides 4× safety margin for bursts
+```
+
+**For Bursty Workloads:**
+
+```java
+props.put("buffer.memory", 134217728);   // 128 MB (handle bursts)
+props.put("max.block.ms", 5000);         // 5 seconds (fail quickly)
+props.put("linger.ms", 0);               // Send immediately
+props.put("batch.size", 16384);          // Smaller batches
+
+// Large buffer absorbs bursts
+// Short max.block.ms detects problems quickly
+```
+
+**Monitoring Buffer Health:**
+
+Key metrics to track:
+
+1. **buffer-available-bytes**: Current free space in buffer
+   - Should generally be > 50% of buffer.memory
+   - Low values indicate buffer pressure
+
+2. **buffer-total-bytes**: Total buffer memory configured
+   - Should match your buffer.memory setting
+
+3. **buffer-exhausted-rate**: How often buffer fills completely
+   - Should be 0 in healthy system
+   - Non-zero indicates undersized buffer or network issues
+
+4. **bufferpool-wait-time-total**: Time threads spent blocked
+   - Should be minimal
+   - High values indicate frequent blocking
+
+5. **produce-throttle-time-avg**: Time broker throttled requests
+   - Can cause buffer to fill
+   - Indicates quota limits or broker load
+
+**Exception Handling:**
+
+```java
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+
+try {
+    // Attempt to send
+    Future<RecordMetadata> future = producer.send(record);
+    
+    // Wait for result
+    RecordMetadata metadata = future.get();
+    
+} catch (BufferExhaustedException e) {
+    // Buffer full and max.block.ms exceeded during send()
+    logger.error("Producer buffer exhausted", e);
+    
+    // Handle backpressure:
+    // Option 1: Slow down production
+    Thread.sleep(1000);
+    
+    // Option 2: Drop message (if acceptable)
+    logger.warn("Message dropped due to buffer pressure");
+    
+    // Option 3: Store to local queue for retry
+    retryQueue.add(record);
+    
+    // Option 4: Alert operations
+    alerting.sendAlert("Kafka producer buffer exhausted");
+    
+} catch (TimeoutException e) {
+    // Couldn't get metadata or partitionsFor() timed out
+    logger.error("Timeout while blocking on buffer", e);
+    
+} catch (ExecutionException e) {
+    // Other errors during send
+    logger.error("Failed to send message", e.getCause());
+}
+```
+
+**Best Practices:**
+
+1. **Size buffer appropriately**: Use formula `buffer.memory >= 4 × (batch.size × partitions)`
+
+2. **Monitor buffer metrics**: Track `buffer-available-bytes` to detect pressure early
+
+3. **Set reasonable max.block.ms**: 
+   - Long timeout (60s+): For batch jobs, can wait for network recovery
+   - Short timeout (5-10s): For real-time apps, fail fast and handle
+
+4. **Handle TimeoutException**: Always implement retry logic or degradation strategy
+
+5. **Don't set buffer too large**: Wastes memory that could be used elsewhere
+
+6. **Consider partition count**: More partitions = more memory needed
+
+7. **Account for bursts**: If workload is bursty, size buffer for peak load
+
+8. **Test under load**: Simulate production traffic to verify buffer sizing
+
+**Common Mistakes:**
+
+❌ **Buffer too small for partition count:**
+
+```java
+props.put("buffer.memory", 1048576);  // 1 MB
+// But writing to 100 partitions with 32 KB batches
+// Needs: 100 × 32 KB = 3.2 MB minimum
+// Result: Constant blocking and timeouts
+```
+
+❌ **max.block.ms too long:**
+
+```java
+props.put("max.block.ms", 300000);  // 5 minutes!
+// Result: Application freezes for 5 minutes on network issues
+// Better: Fail fast (10-30s) and handle gracefully
+```
+
+❌ **Not handling exceptions:**
+
+```java
+// Dangerous - ignores buffer exhaustion!
+producer.send(record);  // Fire and forget
+// Result: Silent message loss when buffer fills
+```
+
+❌ **Ignoring buffer metrics:**
+
+```java
+// No monitoring of buffer-available-bytes
+// Result: Buffer fills gradually, then sudden failures
+// Better: Alert when available bytes < 20%
+```
+
+✅ **Correct Configuration:**
+
+```java
+// Writing to 50 partitions
+int partitionCount = 50;
+int batchSize = 32768;  // 32 KB
+int safetyMargin = 4;
+
+// Calculate buffer size
+long minBuffer = partitionCount * batchSize;
+long recommendedBuffer = minBuffer * safetyMargin;
+
+props.put("buffer.memory", recommendedBuffer);  // ~6.4 MB
+props.put("max.block.ms", 10000);  // Fail fast at 10 seconds
+props.put("batch.size", batchSize);
+
+// Always handle exceptions
+try {
+    producer.send(record).get();
+} catch (Exception e) {
+    handleFailure(record, e);
+}
+
+// Monitor buffer health
+logger.info("Buffer available: " + producer.metrics()
+    .get("buffer-available-bytes"));
+```
+
+**Relationship with Other Properties:**
+
+```md
+buffer.memory works with:
+
+1. batch.size:
+   - Each batch consumes buffer space
+   - More partitions × larger batches = more memory needed
+
+2. linger.ms:
+   - Longer linger = messages wait in buffer longer
+   - Can cause buffer to fill if linger.ms is high
+
+3. compression.type:
+   - Compression needs temporary buffer space
+   - Add 2-5 MB overhead for compression buffers
+
+4. max.in.flight.requests.per.connection:
+   - More in-flight requests = more buffer usage
+   - Each request holds batches in memory until acked
+
+5. delivery.timeout.ms:
+   - Messages stay in buffer until delivered or timeout
+   - Longer timeout = potentially more buffer usage
+```
+
+**When to Increase buffer.memory:**
+
+- ✅ Writing to many partitions (100+)
+- ✅ Large batch sizes (64 KB+)
+- ✅ Bursty traffic patterns
+- ✅ High message rate (10,000+ msg/sec)
+- ✅ Seeing frequent `buffer-exhausted-rate` > 0
+- ✅ Logs show TimeoutException from send()
+- ✅ Application threads blocked frequently
+
+**When to Decrease max.block.ms:**
+
+- ✅ Real-time applications requiring fast failure
+- ✅ Better user experience with graceful degradation
+- ✅ Want to detect broker issues quickly
+- ✅ Implementing circuit breaker pattern
+- ✅ Can handle failures at application level
 
 #### Producer Retries
 
