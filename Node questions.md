@@ -1,66 +1,66 @@
 # Node.js Backend Developer Interview Q&A
 
 - [Node.js Backend Developer Interview Q\&A](#nodejs-backend-developer-interview-qa)
-    - [Core Node.js Concepts](#core-nodejs-concepts)
-        - [Q1: What is Node.js and what makes it different from traditional server-side technologies?](#q1-what-is-nodejs-and-what-makes-it-different-from-traditional-server-side-technologies)
-        - [Q2: Explain the Event Loop in Node.js](#q2-explain-the-event-loop-in-nodejs)
-        - [Q3: What's the difference between process.nextTick(), setImmediate(), and setTimeout()?](#q3-whats-the-difference-between-processnexttick-setimmediate-and-settimeout)
-        - [Q4: What are Streams in Node.js and when would you use them?](#q4-what-are-streams-in-nodejs-and-when-would-you-use-them)
-        - [Q5: Explain callback hell and how to avoid it](#q5-explain-callback-hell-and-how-to-avoid-it)
-    - [REST API Development](#rest-api-development)
-        - [Q6: How would you design and structure a RESTful API in Node.js?](#q6-how-would-you-design-and-structure-a-restful-api-in-nodejs)
-        - [Q7: What's the difference between PUT and PATCH?](#q7-whats-the-difference-between-put-and-patch)
-        - [Q8: How do you handle authentication and authorization in Node.js REST APIs?](#q8-how-do-you-handle-authentication-and-authorization-in-nodejs-rest-apis)
-        - [Q9: How do you handle errors in Node.js REST APIs?](#q9-how-do-you-handle-errors-in-nodejs-rest-apis)
-        - [Q10: How would you implement pagination, filtering, and sorting in a REST API?](#q10-how-would-you-implement-pagination-filtering-and-sorting-in-a-rest-api)
-    - [Express.js \& MVC Frameworks](#expressjs--mvc-frameworks)
-        - [Q11: Explain the middleware pattern in Express.js](#q11-explain-the-middleware-pattern-in-expressjs)
-        - [Q12: What is the MVC pattern and how do you implement it in Node.js?](#q12-what-is-the-mvc-pattern-and-how-do-you-implement-it-in-nodejs)
-        - [Q13: What popular Node.js frameworks are you familiar with?](#q13-what-popular-nodejs-frameworks-are-you-familiar-with)
-    - [Database Integration](#database-integration)
-        - [Q14: How do you work with databases in Node.js? Compare SQL vs NoSQL approaches](#q14-how-do-you-work-with-databases-in-nodejs-compare-sql-vs-nosql-approaches)
-        - [Q15: How do you handle database transactions in Node.js?](#q15-how-do-you-handle-database-transactions-in-nodejs)
-        - [Q16: How do you optimize database queries in Node.js?](#q16-how-do-you-optimize-database-queries-in-nodejs)
-    - [Async Programming](#async-programming)
-        - [Q17: Explain Promises vs Async/Await](#q17-explain-promises-vs-asyncawait)
-        - [Q18: How do you handle multiple async operations?](#q18-how-do-you-handle-multiple-async-operations)
-    - [Performance \& Security](#performance--security)
-        - [Q19: How do you optimize Node.js application performance?](#q19-how-do-you-optimize-nodejs-application-performance)
-        - [Q20: What security best practices do you follow in Node.js?](#q20-what-security-best-practices-do-you-follow-in-nodejs)
-    - [Docker \& DevOps](#docker--devops)
-        - [Q21: How do you containerize a Node.js application with Docker?](#q21-how-do-you-containerize-a-nodejs-application-with-docker)
-        - [Q22: What's your experience with AWS services for Node.js applications?](#q22-whats-your-experience-with-aws-services-for-nodejs-applications)
-        - [Q23: How do you implement CI/CD for Node.js applications?](#q23-how-do-you-implement-cicd-for-nodejs-applications)
-    - [Advanced Topics](#advanced-topics)
-        - [Q24: How do you implement WebSockets in Node.js?](#q24-how-do-you-implement-websockets-in-nodejs)
-        - [Q25: How do you handle file uploads in Node.js?](#q25-how-do-you-handle-file-uploads-in-nodejs)
-        - [Q26: How do you implement background jobs and task queues?](#q26-how-do-you-implement-background-jobs-and-task-queues)
-        - [Q27: How do you implement testing in Node.js?](#q27-how-do-you-implement-testing-in-nodejs)
-        - [Q28: How do you debug Node.js applications?](#q28-how-do-you-debug-nodejs-applications)
-        - [Q29: Describe a challenging Node.js project you worked on](#q29-describe-a-challenging-nodejs-project-you-worked-on)
-        - [Q30: How do you stay updated with Node.js and JavaScript ecosystem?](#q30-how-do-you-stay-updated-with-nodejs-and-javascript-ecosystem)
-    - [Additional Core Concepts \& Fundamentals](#additional-core-concepts--fundamentals)
-        - [Q31: What is REPL in Node.js?](#q31-what-is-repl-in-nodejs)
-        - [Q32: What is the Event Emitter pattern?](#q32-what-is-the-event-emitter-pattern)
-        - [Q33: What's the difference between `process.nextTick()` and `setImmediate()`?](#q33-whats-the-difference-between-processnexttick-and-setimmediate)
-        - [Q34: How does Node.js handle child processes?](#q34-how-does-nodejs-handle-child-processes)
-        - [Q35: What is the difference between operational and programmer errors?](#q35-what-is-the-difference-between-operational-and-programmer-errors)
-        - [Q36: What is the purpose of `module.exports` vs `exports`?](#q36-what-is-the-purpose-of-moduleexports-vs-exports)
-        - [Q37: What is the buffer class in Node.js?](#q37-what-is-the-buffer-class-in-nodejs)
-        - [Q38: What are the different types of HTTP requests in Node.js?](#q38-what-are-the-different-types-of-http-requests-in-nodejs)
-        - [Q39: How does Node.js support multi-core processors?](#q39-how-does-nodejs-support-multi-core-processors)
-        - [Q40: What is middleware in Node.js/Express?](#q40-what-is-middleware-in-nodejsexpress)
-    - [Advanced Topics \& Modern Practices](#advanced-topics--modern-practices)
-        - [Q41: Explain package.json and important fields](#q41-explain-packagejson-and-important-fields)
-        - [Q42: How do you implement TypeScript with Node.js?](#q42-how-do-you-implement-typescript-with-nodejs)
-        - [Q43: How do you implement logging in Node.js?](#q43-how-do-you-implement-logging-in-nodejs)
-        - [Q44: What are Worker Threads and when should you use them?](#q44-what-are-worker-threads-and-when-should-you-use-them)
-        - [Q45: How do you implement caching strategies in Node.js?](#q45-how-do-you-implement-caching-strategies-in-nodejs)
-        - [Q46: How do you handle file uploads securely?](#q46-how-do-you-handle-file-uploads-securely)
-        - [Q47: How do you implement rate limiting in Node.js?](#q47-how-do-you-implement-rate-limiting-in-nodejs)
-        - [Q48: How do you implement real-time features with Socket.IO?](#q48-how-do-you-implement-real-time-features-with-socketio)
-        - [Q49: How do you implement testing strategies in Node.js?](#q49-how-do-you-implement-testing-strategies-in-nodejs)
-        - [Q50: What deployment strategies do you use for Node.js applications?](#q50-what-deployment-strategies-do-you-use-for-nodejs-applications)
+  - [Core Node.js Concepts](#core-nodejs-concepts)
+    - [Q1: What is Node.js and what makes it different from traditional server-side technologies?](#q1-what-is-nodejs-and-what-makes-it-different-from-traditional-server-side-technologies)
+    - [Q2: Explain the Event Loop in Node.js](#q2-explain-the-event-loop-in-nodejs)
+    - [Q3: What's the difference between process.nextTick(), setImmediate(), and setTimeout()?](#q3-whats-the-difference-between-processnexttick-setimmediate-and-settimeout)
+    - [Q4: What are Streams in Node.js and when would you use them?](#q4-what-are-streams-in-nodejs-and-when-would-you-use-them)
+    - [Q5: Explain callback hell and how to avoid it](#q5-explain-callback-hell-and-how-to-avoid-it)
+  - [REST API Development](#rest-api-development)
+    - [Q6: How would you design and structure a RESTful API in Node.js?](#q6-how-would-you-design-and-structure-a-restful-api-in-nodejs)
+    - [Q7: What's the difference between PUT and PATCH?](#q7-whats-the-difference-between-put-and-patch)
+    - [Q8: How do you handle authentication and authorization in Node.js REST APIs?](#q8-how-do-you-handle-authentication-and-authorization-in-nodejs-rest-apis)
+    - [Q9: How do you handle errors in Node.js REST APIs?](#q9-how-do-you-handle-errors-in-nodejs-rest-apis)
+    - [Q10: How would you implement pagination, filtering, and sorting in a REST API?](#q10-how-would-you-implement-pagination-filtering-and-sorting-in-a-rest-api)
+  - [Express.js \& MVC Frameworks](#expressjs--mvc-frameworks)
+    - [Q11: Explain the middleware pattern in Express.js](#q11-explain-the-middleware-pattern-in-expressjs)
+    - [Q12: What is the MVC pattern and how do you implement it in Node.js?](#q12-what-is-the-mvc-pattern-and-how-do-you-implement-it-in-nodejs)
+    - [Q13: What popular Node.js frameworks are you familiar with?](#q13-what-popular-nodejs-frameworks-are-you-familiar-with)
+  - [Database Integration](#database-integration)
+    - [Q14: How do you work with databases in Node.js? Compare SQL vs NoSQL approaches](#q14-how-do-you-work-with-databases-in-nodejs-compare-sql-vs-nosql-approaches)
+    - [Q15: How do you handle database transactions in Node.js?](#q15-how-do-you-handle-database-transactions-in-nodejs)
+    - [Q16: How do you optimize database queries in Node.js?](#q16-how-do-you-optimize-database-queries-in-nodejs)
+  - [Async Programming](#async-programming)
+    - [Q17: Explain Promises vs Async/Await](#q17-explain-promises-vs-asyncawait)
+    - [Q18: How do you handle multiple async operations?](#q18-how-do-you-handle-multiple-async-operations)
+  - [Performance \& Security](#performance--security)
+    - [Q19: How do you optimize Node.js application performance?](#q19-how-do-you-optimize-nodejs-application-performance)
+    - [Q20: What security best practices do you follow in Node.js?](#q20-what-security-best-practices-do-you-follow-in-nodejs)
+  - [Docker \& DevOps](#docker--devops)
+    - [Q21: How do you containerize a Node.js application with Docker?](#q21-how-do-you-containerize-a-nodejs-application-with-docker)
+    - [Q22: What's your experience with AWS services for Node.js applications?](#q22-whats-your-experience-with-aws-services-for-nodejs-applications)
+    - [Q23: How do you implement CI/CD for Node.js applications?](#q23-how-do-you-implement-cicd-for-nodejs-applications)
+  - [Advanced Topics](#advanced-topics)
+    - [Q24: How do you implement WebSockets in Node.js?](#q24-how-do-you-implement-websockets-in-nodejs)
+    - [Q25: How do you handle file uploads in Node.js?](#q25-how-do-you-handle-file-uploads-in-nodejs)
+    - [Q26: How do you implement background jobs and task queues?](#q26-how-do-you-implement-background-jobs-and-task-queues)
+    - [Q27: How do you implement testing in Node.js?](#q27-how-do-you-implement-testing-in-nodejs)
+    - [Q28: How do you debug Node.js applications?](#q28-how-do-you-debug-nodejs-applications)
+    - [Q29: Describe a challenging Node.js project you worked on](#q29-describe-a-challenging-nodejs-project-you-worked-on)
+    - [Q30: How do you stay updated with Node.js and JavaScript ecosystem?](#q30-how-do-you-stay-updated-with-nodejs-and-javascript-ecosystem)
+  - [Additional Core Concepts \& Fundamentals](#additional-core-concepts--fundamentals)
+    - [Q31: What is REPL in Node.js?](#q31-what-is-repl-in-nodejs)
+    - [Q32: What is the Event Emitter pattern?](#q32-what-is-the-event-emitter-pattern)
+    - [Q33: What's the difference between `process.nextTick()` and `setImmediate()`?](#q33-whats-the-difference-between-processnexttick-and-setimmediate)
+    - [Q34: How does Node.js handle child processes?](#q34-how-does-nodejs-handle-child-processes)
+    - [Q35: What is the difference between operational and programmer errors?](#q35-what-is-the-difference-between-operational-and-programmer-errors)
+    - [Q36: What is the purpose of `module.exports` vs `exports`?](#q36-what-is-the-purpose-of-moduleexports-vs-exports)
+    - [Q37: What is the buffer class in Node.js?](#q37-what-is-the-buffer-class-in-nodejs)
+    - [Q38: What are the different types of HTTP requests in Node.js?](#q38-what-are-the-different-types-of-http-requests-in-nodejs)
+    - [Q39: How does Node.js support multi-core processors?](#q39-how-does-nodejs-support-multi-core-processors)
+    - [Q40: What is middleware in Node.js/Express?](#q40-what-is-middleware-in-nodejsexpress)
+  - [Advanced Topics \& Modern Practices](#advanced-topics--modern-practices)
+    - [Q41: Explain package.json and important fields](#q41-explain-packagejson-and-important-fields)
+    - [Q42: How do you implement TypeScript with Node.js?](#q42-how-do-you-implement-typescript-with-nodejs)
+    - [Q43: How do you implement logging in Node.js?](#q43-how-do-you-implement-logging-in-nodejs)
+    - [Q44: What are Worker Threads and when should you use them?](#q44-what-are-worker-threads-and-when-should-you-use-them)
+    - [Q45: How do you implement caching strategies in Node.js?](#q45-how-do-you-implement-caching-strategies-in-nodejs)
+    - [Q46: How do you handle file uploads securely?](#q46-how-do-you-handle-file-uploads-securely)
+    - [Q47: How do you implement rate limiting in Node.js?](#q47-how-do-you-implement-rate-limiting-in-nodejs)
+    - [Q48: How do you implement real-time features with Socket.IO?](#q48-how-do-you-implement-real-time-features-with-socketio)
+    - [Q49: How do you implement testing strategies in Node.js?](#q49-how-do-you-implement-testing-strategies-in-nodejs)
+    - [Q50: What deployment strategies do you use for Node.js applications?](#q50-what-deployment-strategies-do-you-use-for-nodejs-applications)
 
 ## Core Node.js Concepts
 
@@ -96,22 +96,26 @@ Phases of the Event Loop:
 **A:** These are all ways to schedule asynchronous code execution, but they differ in **when** they run in the event loop:
 
 **process.nextTick():**
+
 - Executes **immediately** after the current operation completes
 - Runs **before** any I/O events or timers
 - Has the **highest priority** (runs before even Promise callbacks in older Node versions)
 - Can **starve** the event loop if called recursively (blocks I/O)
 
 **setImmediate():**
+
 - Executes in the **check phase** of the event loop
 - Runs **after** I/O events have been processed
 - Better for recursive operations (doesn't block I/O)
 
 **setTimeout(fn, 0):**
+
 - Executes in the **timers phase** of the event loop
 - Has the **lowest priority** among these three
 - Minimum delay is ~1ms (not truly 0ms)
 
 **Execution Order Visualization:**
+
 ```
 Current Operation Completes
          ↓
@@ -128,6 +132,7 @@ Current Operation Completes
 ```
 
 **Practical Example:**
+
 ```javascript
 console.log('1: Script start');
 
@@ -153,6 +158,7 @@ console.log('6: Script end');
 **Important Note:** The order of setTimeout vs setImmediate can vary depending on the context. Inside an I/O callback, setImmediate will **always** run first.
 
 **When to use each:**
+
 - **process.nextTick()**: When you need something to run before any I/O (use sparingly!)
 - **setImmediate()**: For breaking up CPU-intensive tasks (recommended)
 - **setTimeout()**: For actual delays or scheduling
@@ -287,6 +293,7 @@ Example:
 **A:** Authentication verifies **who you are** (identity), while authorization determines **what you can access** (permissions).
 
 **Understanding the Flow:**
+
 1. User sends credentials (username/password)
 2. Server verifies credentials
 3. Server generates and returns a token (JWT) or session
@@ -373,6 +380,7 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
 ```
 
 **2. Session-based Authentication:**
+
 ```javascript
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
@@ -406,6 +414,7 @@ const authMiddleware = (req, res, next) => {
 ```
 
 **3. OAuth 2.0** (Google, GitHub, etc.):
+
 ```javascript
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
@@ -469,6 +478,7 @@ router.get('/profile',
 ```
 
 **Security Best Practices (2026):**
+
 - Store JWT secret in environment variables
 - Use HTTPS in production
 - Set short token expiration (1-24 hours)
@@ -509,6 +519,7 @@ app.get('/users/:id', async (req, res) => {
 **Centralized Error Handling Solution:**
 
 **Step 1: Create Custom Error Class**
+
 ```javascript
 // Custom error class for operational errors
 class AppError extends Error {
@@ -697,6 +708,7 @@ throw new AppError('Database connection failed', 500);
 ```
 
 **Best Practices:**
+
 - Use custom error classes for different error types
 - Always use asyncHandler or try/catch with async routes
 - Log all errors (use [Winston/Pino - see Q43](#q43-how-do-you-implement-logging-in-nodejs))
@@ -885,6 +897,7 @@ const getAllUsers = async (req, res) => {
 ```
 
 **Best Practices:**
+
 - Always validate and sanitize query parameters
 - Set maximum limit (e.g., max 100 items per page)
 - Use indexes on filtered/sorted fields for performance
@@ -899,6 +912,7 @@ const getAllUsers = async (req, res) => {
 ### Q11: Explain the middleware pattern in Express.js
 
 **A:** Middleware are functions that execute **during the request-response cycle**. They have access to three key objects:
+
 - `req` (request) - incoming HTTP request
 - `res` (response) - outgoing HTTP response
 - `next` (function) - passes control to the next middleware
@@ -922,6 +936,7 @@ Client Response
 **What is "next"?**
 
 `next` is a **callback function** that:
+
 1. Passes control to the next middleware in the chain
 2. If not called, the request hangs (client never gets response)
 3. If called with an error `next(error)`, skips to error-handling middleware
@@ -952,6 +967,7 @@ app.get('/users', (req, res) => {
 **Types of Middleware:**
 
 **1. Application-level middleware (app.use):**
+
 ```javascript
 const express = require('express');
 const app = express();
@@ -970,6 +986,7 @@ app.use('/api', (req, res, next) => {
 ```
 
 **2. Router-level middleware (router.use):**
+
 ```javascript
 const express = require('express');
 const router = express.Router();  // ← Router is a mini-application
@@ -1005,6 +1022,7 @@ app.use('/api', router);
 | Use case | Top-level config | Organize routes by feature |
 
 **Example organizing with routers:**
+
 ```javascript
 // app.js
 const express = require('express');
@@ -1037,6 +1055,7 @@ module.exports = router;
 ```
 
 **3. Error-handling middleware (4 parameters!):**
+
 ```javascript
 // MUST have 4 parameters: (err, req, res, next)
 app.use((err, req, res, next) => {
@@ -1048,6 +1067,7 @@ app.use((err, req, res, next) => {
 ```
 
 **4. Built-in middleware:**
+
 ```javascript
 app.use(express.json());           // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded
@@ -1055,6 +1075,7 @@ app.use(express.static('public')); // Serve static files
 ```
 
 **5. Third-party middleware:**
+
 ```javascript
 const cors = require('cors');
 const helmet = require('helmet');
@@ -1066,6 +1087,7 @@ app.use(morgan('combined')); // HTTP logging
 ```
 
 **Route-specific middleware:**
+
 ```javascript
 // Single middleware
 app.get('/profile', authMiddleware, (req, res) => {
@@ -1082,6 +1104,7 @@ app.delete('/users/:id',
 ```
 
 **Middleware execution order is CRITICAL:**
+
 ```javascript
 const express = require('express');
 const app = express();
@@ -1114,6 +1137,7 @@ app.use((err, req, res, next) => {
 **Common middleware patterns:**
 
 **Conditional middleware:**
+
 ```javascript
 const conditionalAuth = (req, res, next) => {
   if (req.path.startsWith('/public')) {
@@ -1124,6 +1148,7 @@ const conditionalAuth = (req, res, next) => {
 ```
 
 **Async middleware (with error handling):**
+
 ```javascript
 const asyncMiddleware = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -1136,6 +1161,7 @@ app.get('/users', asyncMiddleware(async (req, res) => {
 ```
 
 **Middleware with configuration:**
+
 ```javascript
 const rateLimiter = (max = 100) => {
   return (req, res, next) => {
@@ -1151,6 +1177,7 @@ app.use('/api/', rateLimiter(50)); // Max 50 requests
 ```
 
 **Key takeaways:**
+
 - Middleware executes in order (top to bottom)
 - Always call `next()` unless sending response
 - Error middleware must have 4 parameters
@@ -1446,6 +1473,7 @@ const users = await User.find().populate('posts');
 **A:** **Yes, both are asynchronous constructs!** They handle asynchronous operations but use different syntax. Async/await is built on top of Promises.
 
 **Understanding the Relationship:**
+
 - **Promises** = The underlying mechanism for async operations
 - **Async/Await** = Syntactic sugar that makes Promises easier to read and write
 - An `async` function **always returns a Promise**
@@ -1519,14 +1547,14 @@ fetchUser().then(user => console.log(user));
 
 **Key Differences:**
 
-| Feature | Promises | Async/Await |
-|---------|----------|-------------|
-| Syntax | `.then().catch()` | `try/catch` |
-| Readability | Chains can get messy | Looks synchronous |
-| Error handling | `.catch()` or second `.then()` param | Standard `try/catch` |
-| Debugging | Harder (async stack traces) | Easier (clear stack traces) |
-| Parallel ops | `Promise.all()` directly | Need to create Promises first |
-| Browser support | ES6 (2015) | ES2017 |
+| Feature         | Promises                             | Async/Await                   |
+|-----------------|--------------------------------------|-------------------------------|
+| Syntax          | `.then().catch()`                    | `try/catch`                   |
+| Readability     | Chains can get messy                 | Looks synchronous             |
+| Error handling  | `.catch()` or second `.then()` param | Standard `try/catch`          |
+| Debugging       | Harder (async stack traces)          | Easier (clear stack traces)   |
+| Parallel ops    | `Promise.all()` directly             | Need to create Promises first |
+| Browser support | ES6 (2015)                           | ES2017                        |
 
 **Error Handling Comparison:**
 
@@ -1594,17 +1622,20 @@ async function getDataParallel2() {
 **When to use which:**
 
 **Use Promises when:**
+
 - You need to chain multiple async operations
 - Working with older codebases
 - You need fine control over Promise behavior
 
 **Use Async/Await when:**
+
 - You want cleaner, more readable code
 - You need complex error handling
 - You want easier debugging
 - Modern projects (it's the standard in 2026)
 
 **Mixed approach (common):**
+
 ```javascript
 async function complexOperation() {
   try {
@@ -1626,6 +1657,7 @@ async function complexOperation() {
 ```
 
 **Important: Async functions always return Promises!**
+
 ```javascript
 async function example() {
   return 'hello';
@@ -2864,6 +2896,7 @@ orderService.once('order:created', (order) => {
 ```
 
 **Key Concepts Demonstrated:**
+
 1. **Server emits events** - `orderService.emit('event', data)`
 2. **Multiple clients listen** - Each service registers with `.on()`
 3. **Decoupling** - Services don't know about each other
@@ -2872,6 +2905,7 @@ orderService.once('order:created', (order) => {
 6. **Asynchronous** - Listeners can be async functions
 
 **Real-world Benefits:**
+
 - **Loose coupling**: Email service doesn't know about inventory service
 - **Scalability**: Easy to add new listeners (e.g., SMS service)
 - **Maintainability**: Each service has single responsibility
@@ -2935,6 +2969,7 @@ queueMicrotask(() => {
 **A:** Child processes allow Node.js to spawn **separate processes** (not threads!) for running external programs or scaling Node.js apps.
 
 **Important**: Child processes are **multi-process**, not multi-threaded. Each child process:
+
 - Has its own memory space (isolated)
 - Has its own V8 instance
 - Runs completely independently
@@ -3682,6 +3717,7 @@ module.exports = {
 ### The Node.js Threading Model
 
 **1. The Main Thread (Event Loop)**
+
 - Node.js runs JavaScript in a **single thread** called the **main thread**
 - This thread executes your code and the event loop
 - **Non-blocking I/O** allows handling many concurrent operations without threads
@@ -3696,6 +3732,7 @@ app.get('/users', async (req, res) => {
 ```
 
 **Why single-threaded works for I/O:**
+
 ```
 Request 1: Read file → (waiting) → process result
 Request 2:   Read DB → (waiting) → process result
@@ -3706,6 +3743,7 @@ No threads needed because Node delegates I/O to the OS.
 ```
 
 **2. libuv Thread Pool (Hidden Threads)**
+
 - Node.js DOES use threads internally via **libuv**
 - Default: 4 threads for file system operations and DNS lookups
 - You don't control these directly
@@ -3731,12 +3769,14 @@ app.get('/compute', (req, res) => {
 #### Option 1: Worker Threads (Multi-Threading within Node)
 
 **What are Worker Threads?**
+
 - True threads that run JavaScript in parallel
 - Share memory with main thread (via SharedArrayBuffer)
 - Part of the same Node.js process
 - Introduced in Node.js 10.5.0, stable in 12+
 
 **When to use:**
+
 - CPU-intensive JavaScript operations
 - Image/video processing
 - Data encryption/compression
@@ -3788,12 +3828,14 @@ app.get('/compute', async (req, res) => {
 #### Option 2: Child Processes (Multi-Processing)
 
 **What are Child Processes?**
+
 - Separate Node.js processes
 - Completely isolated memory
 - Can run ANY program (not just Node.js)
 - Higher overhead than Worker Threads
 
 **When to use:**
+
 - Running external commands (e.g., `ffmpeg`, `imagemagick`)
 - Complete isolation needed
 - Legacy scripts in other languages
@@ -3813,12 +3855,14 @@ ffmpeg.stdout.on('data', (data) => {
 #### Option 3: Cluster Module (Multi-Processing for HTTP)
 
 **What is Cluster?**
+
 - Creates multiple Node.js processes
 - All share the same server port
 - Load balancer built-in
 - Each process is completely independent
 
 **When to use:**
+
 - Scaling HTTP/WebSocket servers
 - Utilizing all CPU cores
 - Production deployments
@@ -3873,6 +3917,7 @@ Each process:
 ### Decision Matrix
 
 **Use Main Thread (default) when:**
+
 - ✅ Handling HTTP requests
 - ✅ Database queries
 - ✅ File I/O
@@ -3880,6 +3925,7 @@ Each process:
 - ❌ NOT for heavy CPU computation
 
 **Use Worker Threads when:**
+
 - ✅ Image/video processing in Node.js
 - ✅ Data encryption/compression
 - ✅ Complex algorithms
@@ -3887,12 +3933,14 @@ Each process:
 - ❌ NOT for I/O operations
 
 **Use Child Processes when:**
+
 - ✅ Running external commands
 - ✅ Spawning other programs
 - ✅ Complete isolation needed
 - ❌ NOT for simple calculations
 
 **Use Cluster/PM2 when:**
+
 - ✅ Production HTTP servers
 - ✅ Need to use all CPU cores
 - ✅ Zero-downtime deployments
@@ -3901,6 +3949,7 @@ Each process:
 ### Summary
 
 **Node.js is:**
+
 1. **Single-threaded** for JavaScript execution (event loop)
 2. **Multi-threaded** internally (libuv for I/O)
 3. **Multi-threaded** explicitly (Worker Threads for CPU tasks)
@@ -3909,6 +3958,7 @@ Each process:
 **The beauty**: You can be all of these at once in a production app!
 
 **See Q34 for Child Processes details** | **See Q44 for Worker Threads examples**
+
 - Use container orchestration (Kubernetes) for true horizontal scaling
 - Consider serverless (AWS Lambda) for automatic scaling
 
@@ -4406,6 +4456,7 @@ export default app;
 **Common tsconfig.json Configurations:**
 
 **For Strict Projects (Recommended):**
+
 ```json
 {
   "compilerOptions": {
@@ -4422,6 +4473,7 @@ export default app;
 ```
 
 **For Legacy/Migration Projects:**
+
 ```json
 {
   "compilerOptions": {
@@ -4436,6 +4488,7 @@ export default app;
 ```
 
 **For Libraries:**
+
 ```json
 {
   "compilerOptions": {
@@ -4450,6 +4503,7 @@ export default app;
 ```
 
 **2026 Best Practices:**
+
 - Always use `"strict": true` for new projects
 - Use `NodeNext` for module/moduleResolution (best compatibility)
 - Enable source maps for easier debugging
@@ -4486,6 +4540,7 @@ import { UserController } from '../../../controllers/UserController';
 "include": ["src/**/*"],
 "exclude": ["node_modules", "dist"]
 }
+
 ```
 
 **3. Example with Express:**

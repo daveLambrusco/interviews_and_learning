@@ -2853,11 +2853,11 @@ max.poll.records=500
 
 **Trade-offs:**
 
-| Value | Throughput | Liveliness Risk | Use Case |
-|-------|-----------|----------------|----------|
-| High (1000+) | ✅ Better | ⚠️ Higher | Fast processing, high throughput |
-| Medium (500) | ✅ Good | ✅ Balanced | Default, general use |
-| Low (10-100) | ⚠️ Lower | ✅ Lower | Slow processing, long transactions |
+| Value        | Throughput | Liveliness Risk | Use Case                           |
+|--------------|------------|-----------------|------------------------------------|
+| High (1000+) | ✅ Better   | ⚠️ Higher       | Fast processing, high throughput   |
+| Medium (500) | ✅ Good     | ✅ Balanced      | Default, general use               |
+| Low (10-100) | ⚠️ Lower   | ✅ Lower         | Slow processing, long transactions |
 
 **Example:**
 
@@ -4165,13 +4165,13 @@ KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
 
 **Performance Benefits:**
 
-| Metric | Before 2.4 | After 2.4 (with Replica Fetching) | Improvement |
-|--------|-----------|----------------------------------|-------------|
-| Read Latency (same rack) | 50-100ms | 1-5ms | 10-50x faster |
-| Read Latency (cross-region) | 200-500ms | 1-5ms | 40-100x faster |
-| Leader CPU | 80-90% | 30-50% | 40% reduction |
-| Network Cross-AZ | High | Low | 70-90% reduction |
-| Read Throughput | Leader only | All ISR replicas | 2-3x increase |
+| Metric                      | Before 2.4  | After 2.4 (with Replica Fetching) | Improvement      |
+|-----------------------------|-------------|-----------------------------------|------------------|
+| Read Latency (same rack)    | 50-100ms    | 1-5ms                             | 10-50x faster    |
+| Read Latency (cross-region) | 200-500ms   | 1-5ms                             | 40-100x faster   |
+| Leader CPU                  | 80-90%      | 30-50%                            | 40% reduction    |
+| Network Cross-AZ            | High        | Low                               | 70-90% reduction |
+| Read Throughput             | Leader only | All ISR replicas                  | 2-3x increase    |
 
 **Cost Benefits (AWS Example):**
 
