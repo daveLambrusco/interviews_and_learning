@@ -3,6 +3,7 @@
 ## Table of Contents
 
 ### Data Structures & Algorithms
+
 1. [Arrays & Strings](#arrays--strings)
    - [ArrayList vs LinkedList](#arraylist-vs-linkedlist)
    - [Reverse a String or Array](#reverse-a-string-or-array)
@@ -17,7 +18,8 @@
 6. [Power (Exponentiation)](#power)
 
 ### Java Language
-7. [Java Core Concepts](#java-core-concepts)
+
+1. [Java Core Concepts](#java-core-concepts)
    - [Java 8 Features](#what-are-the-main-features-of-java-8) — Lambdas, Streams, Optional, default methods
    - [Java Memory Management](#explain-the-concept-of-java-memory-management) — Heap, Stack, GC
    - [`==` vs `equals()`](#what-is-the-difference-between--and-equals-in-java)
@@ -538,7 +540,6 @@ public static int power(int base, int exp) {
         return half * half * base;
 }
 ```
----
 
 ## Java Core Concepts
 
@@ -824,4 +825,3 @@ Released in September 2023, Java 21 is the latest **LTS release** with major imp
 2. **Strong encapsulation**: `--add-opens` may be needed for reflection
 3. **Module system**: Some internal APIs require explicit module access
 4. **Build tools**: Update Maven/Gradle plugins for compatibility
-

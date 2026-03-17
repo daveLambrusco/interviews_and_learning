@@ -2,27 +2,115 @@
 
 ## Table of Contents
 
-1. [Hibernate](#hibernate)
-   - [What is Hibernate and why is it used?](#what-is-hibernate-and-why-is-it-used)
-   - [Lazy Loading](#explain-the-concept-of-lazy-loading-in-hibernate)
-   - [Caching](#caching-in-hibernate)
-   - [N+1 Problem](#n1-select-problem)
-2. [Spring](#spring)
-   - [What is Spring Framework?](#what-is-spring-framework)
-   - [Dependency Injection in Spring](#what-is-dependency-injection-in-spring)
-   - [Inversion of Control (IoC)](#inversion-of-control-ioc)
-   - [Creating a Spring Boot Project from Scratch](#creating-a-springspring-boot-project-from-scratch)
-   - [Integrating Hibernate/JPA with Spring Boot](#integrating-hibernatejpa-with-spring-boot)
-   - [Configuration Files Discovery](#configuration-files-discovery)
-   - [Most Common Spring Annotations](#most-common-spring-annotations)
-   - [IoC Deep Dive](#inversion-of-control-ioc-deep-dive)
-   - [Dependency Injection Deep Dive](#dependency-injection-di-deep-dive)
-   - [Spring Boot Auto-Configuration](#spring-boot-auto-configuration)
-   - [Spring Boot](#spring-boot)
-   - [Spring Core Modules](#spring-core-modules)
-   - [Spring Security](#spring-security)
-   - [Spring Data](#spring-data)
-   - [Spring WebFlux (Reactive)](#spring-webflux-reactive)
+- [Spring \& Hibernate Q\&A](#spring--hibernate-qa)
+  - [Table of Contents](#table-of-contents)
+  - [Hibernate](#hibernate)
+    - [What is Hibernate and why is it used?](#what-is-hibernate-and-why-is-it-used)
+    - [Explain the concept of lazy loading in Hibernate](#explain-the-concept-of-lazy-loading-in-hibernate)
+    - [What are the different types of Hibernate mappings?](#what-are-the-different-types-of-hibernate-mappings)
+    - [How does Hibernate caching work?](#how-does-hibernate-caching-work)
+    - [What is the difference between `save()` and `persist()` methods in Hibernate?](#what-is-the-difference-between-save-and-persist-methods-in-hibernate)
+  - [Spring](#spring)
+    - [What is Spring Framework?](#what-is-spring-framework)
+    - [What are the benefits of using Spring Framework?](#what-are-the-benefits-of-using-spring-framework)
+    - [What is Dependency Injection in Spring?](#what-is-dependency-injection-in-spring)
+    - [Inversion of Control (IoC)](#inversion-of-control-ioc)
+      - [Key Concepts of IoC](#key-concepts-of-ioc)
+      - [Benefits of IoC](#benefits-of-ioc)
+    - [Dependency Injection (DI)](#dependency-injection-di)
+    - [Creating a Spring/Spring Boot Project from Scratch](#creating-a-springspring-boot-project-from-scratch)
+      - [Option 1: Using Spring Initializr (Recommended)](#option-1-using-spring-initializr-recommended)
+      - [Option 2: Manual Maven Setup](#option-2-manual-maven-setup)
+      - [Option 3: Manual Gradle Setup](#option-3-manual-gradle-setup)
+      - [Project Structure](#project-structure)
+      - [Main Application Class](#main-application-class)
+    - [Integrating Hibernate/JPA with Spring Boot](#integrating-hibernatejpa-with-spring-boot)
+      - [Step 1: Add Dependencies](#step-1-add-dependencies)
+      - [Step 2: Configure Database Connection](#step-2-configure-database-connection)
+      - [Step 3: Create Entity Classes](#step-3-create-entity-classes)
+      - [Step 4: Create Repository Interface](#step-4-create-repository-interface)
+      - [Step 5: Create Service Layer](#step-5-create-service-layer)
+      - [Step 6: Create Controller](#step-6-create-controller)
+    - [Configuration Files Discovery](#configuration-files-discovery)
+      - [1. Application Properties/YAML Discovery Order](#1-application-propertiesyaml-discovery-order)
+      - [2. Profile-Specific Configuration](#2-profile-specific-configuration)
+      - [3. External Configuration Sources (Priority Order)](#3-external-configuration-sources-priority-order)
+      - [4. Java-Based Configuration Discovery](#4-java-based-configuration-discovery)
+      - [5. Custom Configuration Files](#5-custom-configuration-files)
+    - [Most Common Spring Annotations](#most-common-spring-annotations)
+      - [Core Spring Annotations](#core-spring-annotations)
+      - [Dependency Injection Annotations](#dependency-injection-annotations)
+      - [JPA/Hibernate Annotations](#jpahibernate-annotations)
+      - [REST API Annotations](#rest-api-annotations)
+      - [Validation Annotations](#validation-annotations)
+      - [Transaction Annotations](#transaction-annotations)
+      - [Spring Boot Specific Annotations](#spring-boot-specific-annotations)
+    - [Inversion of Control (IoC) Deep Dive](#inversion-of-control-ioc-deep-dive)
+      - [Understanding the Fundamental Difference](#understanding-the-fundamental-difference)
+      - [Traditional Flow (Without IoC) - YOU control everything](#traditional-flow-without-ioc---you-control-everything)
+      - [With IoC (Spring Container) - SPRING controls everything](#with-ioc-spring-container---spring-controls-everything)
+      - [What Actually Changes? Key Differences](#what-actually-changes-key-differences)
+        - [1. **Control of Object Creation**](#1-control-of-object-creation)
+        - [2. **Singleton Management**](#2-singleton-management)
+        - [3. **Testing**](#3-testing)
+        - [4. **Switching Implementations**](#4-switching-implementations)
+        - [5. **Complex Dependency Trees**](#5-complex-dependency-trees)
+      - [Visual Comparison](#visual-comparison)
+      - [The "Aha!" Moment](#the-aha-moment)
+      - [Spring IoC Container Types](#spring-ioc-container-types)
+      - [Bean Lifecycle in IoC Container](#bean-lifecycle-in-ioc-container)
+    - [Dependency Injection (DI) Deep Dive](#dependency-injection-di-deep-dive)
+      - [Types of Dependency Injection](#types-of-dependency-injection)
+        - [1. Constructor Injection (Recommended)](#1-constructor-injection-recommended)
+        - [2. Setter Injection](#2-setter-injection)
+        - [3. Field Injection (Not Recommended)](#3-field-injection-not-recommended)
+      - [Handling Multiple Bean Candidates](#handling-multiple-bean-candidates)
+      - [Bean Scopes](#bean-scopes)
+      - [Circular Dependencies](#circular-dependencies)
+    - [Spring Boot Auto-Configuration](#spring-boot-auto-configuration)
+    - [Spring Boot](#spring-boot)
+      - [What is Spring Boot and how does it simplify Spring development?](#what-is-spring-boot-and-how-does-it-simplify-spring-development)
+      - [What are the advantages of using Spring Boot?](#what-are-the-advantages-of-using-spring-boot)
+      - [Explain the concept of Spring Boot starters](#explain-the-concept-of-spring-boot-starters)
+      - [How does Spring Boot handle dependency management?](#how-does-spring-boot-handle-dependency-management)
+      - [What is the purpose of Spring Boot Actuator?](#what-is-the-purpose-of-spring-boot-actuator)
+      - [How do you configure a Spring Boot application?](#how-do-you-configure-a-spring-boot-application)
+      - [Spring Boot Version Evolution (1.x → 2.x → 3.x)](#spring-boot-version-evolution-1x--2x--3x)
+        - [Spring Boot 1.x (2014-2019)](#spring-boot-1x-2014-2019)
+        - [Spring Boot 2.x (2018-2023)](#spring-boot-2x-2018-2023)
+        - [Spring Boot 3.x (2022-present)](#spring-boot-3x-2022-present)
+        - [Version Comparison Table](#version-comparison-table)
+      - [Spring Boot 3.x Deep Dive](#spring-boot-3x-deep-dive)
+        - [Jakarta EE 9+ Migration](#jakarta-ee-9-migration)
+        - [Native Compilation with GraalVM](#native-compilation-with-graalvm)
+        - [Observability with Micrometer Tracing](#observability-with-micrometer-tracing)
+        - [Virtual Threads Support (Java 21)](#virtual-threads-support-java-21)
+        - [Problem Details (RFC 7807)](#problem-details-rfc-7807)
+    - [Spring Core Modules](#spring-core-modules)
+      - [Spring Core Container](#spring-core-container)
+      - [Bean Scopes](#bean-scopes-1)
+      - [Bean Lifecycle](#bean-lifecycle)
+      - [Conditional Beans](#conditional-beans)
+      - [Profiles](#profiles)
+    - [Spring Security](#spring-security)
+      - [Basic Configuration (Spring Boot 3.x)](#basic-configuration-spring-boot-3x)
+      - [JWT Authentication](#jwt-authentication)
+      - [Method-Level Security](#method-level-security)
+    - [Spring Data](#spring-data)
+      - [Spring Data JPA](#spring-data-jpa)
+      - [Specifications (Dynamic Queries)](#specifications-dynamic-queries)
+      - [Pagination and Sorting](#pagination-and-sorting)
+    - [Spring WebFlux (Reactive)](#spring-webflux-reactive)
+      - [Reactive Controller](#reactive-controller)
+      - [Reactive Repository (MongoDB)](#reactive-repository-mongodb)
+      - [WebClient (Reactive HTTP Client)](#webclient-reactive-http-client)
+  - [Quarkus — Intro and Differences with Spring](#quarkus--intro-and-differences-with-spring)
+    - [What is Quarkus?](#what-is-quarkus)
+    - [Quarkus vs Spring Boot](#quarkus-vs-spring-boot)
+    - [REST Endpoint Example in Quarkus](#rest-endpoint-example-in-quarkus)
+    - [Panache ORM (alternative to Spring Data JPA)](#panache-orm-alternative-to-spring-data-jpa)
+    - [Configuration (application.properties)](#configuration-applicationproperties)
+    - [When to Use Quarkus vs Spring](#when-to-use-quarkus-vs-spring)
 
 ---
 
@@ -2164,3 +2252,101 @@ public class ExternalApiService {
 }
 ```
 
+---
+
+## Quarkus — Intro and Differences with Spring
+
+### What is Quarkus?
+
+**Quarkus** is a cloud-native Java framework developed by Red Hat (2019), optimized for Kubernetes, containers, and serverless environments. Its design shifts as much processing as possible to **build-time** rather than runtime, resulting in ultra-fast startup times and minimal memory footprint.
+
+**Key features:**
+
+- **GraalVM Native Image:** compiles the application into a native binary → startup < 50ms, ~30MB RAM
+- **Dev Mode with live reload:** `./mvnw quarkus:dev` automatically recompiles and reloads on change
+- **Reactive by design:** built on Vert.x + Mutiny for non-blocking I/O
+- **Standard APIs:** uses JAX-RS, CDI, JPA (Panache ORM), MicroProfile
+- **Kubernetes-native:** auto-generates Deployment/Service manifests, built-in health checks at `/q/health`
+
+### Quarkus vs Spring Boot
+
+| Feature            | Spring Boot           | Quarkus              |
+|--------------------|-----------------------|----------------------|
+| Startup (JVM)      | 2–5 seconds           | 0.5–1 second         |
+| Startup (native)   | ~100–200ms (GraalVM)  | ~20–50ms             |
+| Memory footprint   | 200–400 MB            | 30–100 MB            |
+| Ecosystem maturity | Very high (12+ years) | Growing (since 2019) |
+| Standard API       | Spring-specific       | MicroProfile / CDI   |
+| Reactive           | WebFlux (opt-in)      | Mutiny (built-in)    |
+| ORM                | Spring Data JPA       | Panache + Hibernate  |
+| Cloud-native       | With Spring Cloud     | Native               |
+| Community          | Huge                  | Rapidly growing      |
+
+### REST Endpoint Example in Quarkus
+
+```java
+@Path("/api/users")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+public class UserResource {
+
+    @Inject
+    UserService userService;
+
+    @GET
+    @Path("/{id}")
+    public User getUser(@PathParam("id") Long id) {
+        return userService.findById(id)
+            .orElseThrow(() -> new NotFoundException("User " + id + " not found"));
+    }
+
+    @POST
+    @Transactional
+    public Response createUser(User user) {
+        userService.create(user);
+        return Response.status(201).entity(user).build();
+    }
+}
+```
+
+### Panache ORM (alternative to Spring Data JPA)
+
+```java
+// Active Record pattern (similar to Rails)
+@Entity
+public class User extends PanacheEntity {
+    public String name;
+    public String email;
+
+    public static List<User> findByEmail(String email) {
+        return list("email", email);
+    }
+}
+
+// Repository pattern (similar to Spring Data)
+@ApplicationScoped
+public class UserRepository implements PanacheRepository<User> {
+    public List<User> findActive() {
+        return list("active = true");
+    }
+}
+```
+
+### Configuration (application.properties)
+
+```properties
+# Quarkus uses the same file format as Spring
+quarkus.datasource.db-kind=postgresql
+quarkus.datasource.username=postgres
+quarkus.datasource.password=secret
+quarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/mydb
+
+# Profiles: %dev, %test, %prod
+%dev.quarkus.datasource.db-kind=h2
+%dev.quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb
+```
+
+### When to Use Quarkus vs Spring
+
+- **Use Quarkus** for: microservices with tight startup/memory requirements, serverless (AWS Lambda), Kubernetes environments with many instances, new cloud-native projects.
+- **Use Spring Boot** for: established enterprise applications, teams already proficient with Spring, when you need the mature ecosystem (Spring Security, Spring Batch, Spring Integration...).

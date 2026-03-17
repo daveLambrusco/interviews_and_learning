@@ -200,6 +200,128 @@ bootstrapApplication(AppComponent, {
 
 ---
 
+## How to Organize an Angular Project
+
+### Recommended Structure (feature-first)
+
+The **feature-first** structure (not layer-first) groups code by business feature/domain rather than by file type. This is the approach recommended by the Angular community for medium-to-large applications.
+
+```sh
+src/
+├── app/
+│   ├── core/                        # Singleton services, guards, interceptors
+│   │   ├── guards/
+│   │   │   └── auth.guard.ts
+│   │   ├── interceptors/
+│   │   │   └── auth.interceptor.ts
+│   │   └── services/
+│   │       └── auth.service.ts
+│   │
+│   ├── shared/                      # Reusable UI: components, pipes, directives
+│   │   ├── components/
+│   │   │   └── spinner/
+│   │   ├── directives/
+│   │   └── pipes/
+│   │
+│   ├── features/                    # Features: each folder is lazy-loaded
+│   │   ├── auth/
+│   │   │   ├── login/
+│   │   │   │   └── login.component.ts
+│   │   │   ├── auth.routes.ts
+│   │   │   └── auth.service.ts
+│   │   ├── dashboard/
+│   │   │   ├── dashboard.component.ts
+│   │   │   └── dashboard.routes.ts
+│   │   └── users/
+│   │       ├── user-list/
+│   │       ├── user-detail/
+│   │       ├── users.routes.ts
+│   │       └── users.service.ts
+│   │
+│   ├── app.component.ts
+│   ├── app.routes.ts               # Root routes with lazy loading
+│   └── app.config.ts               # provideRouter, provideHttpClient, etc.
+│
+├── environments/
+│   ├── environment.ts              # Dev: { production: false, apiUrl: '...' }
+│   └── environment.prod.ts
+└── assets/
+```
+
+### Key Principles
+
+1. **Feature-first:** group everything belonging to a feature (component, service, routes, models) in the same folder.
+2. **Lazy loading per feature:** each feature is loaded only when the user navigates to that route.
+3. **`core/`** contains only app-wide singletons (auth, interceptors, guards). Never import `core/` from within `features/`.
+4. **`shared/`** contains *presentational* and reusable components, pipes, and directives. No business logic.
+5. **Standalone components (Angular 15+):** NgModules are gone — each component declares its own dependencies via `imports: []`.
+6. **Barrel files (`index.ts`):** export the public API of each folder, hiding internal details.
+
+### Lazy loading con standalone (Angular 15+)
+
+```typescript
+// app.routes.ts
+export const appRoutes: Routes = [
+  { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+  {
+    path: 'dashboard',
+    loadComponent: () =>
+      import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
+  },
+  {
+    path: 'users',
+    loadChildren: () =>
+      import('./features/users/users.routes').then(m => m.usersRoutes),
+  },
+];
+
+// features/users/users.routes.ts
+export const usersRoutes: Routes = [
+  { path: '', component: UserListComponent },
+  { path: ':id', component: UserDetailComponent },
+];
+```
+
+### Practical Differences: Component vs Service vs Module
+
+|                        | Component                 | Service                     | Module (NgModule)          |
+|------------------------|---------------------------|-----------------------------|----------------------------|
+| **Purpose**            | View + user interaction   | Business logic, data access | Grouping (legacy)          |
+| **Decorator**          | `@Component`              | `@Injectable`               | `@NgModule`                |
+| **Has template?**      | ✅ Yes                     | ❌ No                        | ❌ No                       |
+| **Singleton?**         | ❌ No (instance per use)  | ✅ With `providedIn: 'root'` | -                          |
+| **Recommended today?** | ✅ Standalone              | ✅                           | ⚠️ Superseded by Standalone |
+
+```typescript
+// Standalone component (Angular 15+)
+@Component({
+  selector: 'app-user-card',
+  standalone: true,
+  imports: [CommonModule, RouterLink],
+  template: `<div>{{ user().name }}</div>`,
+})
+export class UserCardComponent {
+  user = input.required<User>();  // Signal Input (Angular 17+)
+}
+
+// Singleton service
+@Injectable({ providedIn: 'root' })
+export class UserService {
+  private readonly http = inject(HttpClient);
+  private readonly users = signal<User[]>([]);
+
+  readonly userCount = computed(() => this.users().length);
+
+  loadUsers() {
+    return this.http.get<User[]>('/api/users').pipe(
+      tap(users => this.users.set(users))
+    );
+  }
+}
+```
+
+---
+
 ## Dependency Injection (DI)
 
 ### What is Dependency Injection in Angular?
@@ -979,6 +1101,7 @@ Directives are classes that add behavior to elements in your Angular application
 3. **Attribute Directives** - Change the appearance or behavior of an element (`ngClass`, `ngStyle`)
 
 **Key Points:**
+
 - Directives use the `@Directive` decorator
 - They can manipulate the DOM, handle events, and modify element properties
 - Custom directives are reusable across components
@@ -996,12 +1119,14 @@ Directives are classes that add behavior to elements in your Angular application
 | **Examples**            | `*ngIf`, `*ngFor`, `*ngSwitch`              | `ngClass`, `ngStyle`, `ngModel`         |
 
 **Example - Structural Directive:**
+
 ```typescript
 <div *ngIf="isVisible">Content</div>
 <!-- Adds/removes entire div from DOM -->
 ```
 
 **Example - Attribute Directive:**
+
 ```typescript
 <div [ngClass]="{ active: isActive }">Content</div>
 <!-- Modifies class attribute of existing div -->
@@ -1611,11 +1736,13 @@ export class DynamicComponent {
 The `*` is syntactic sugar that Angular expands into a more verbose form.
 
 **What you write:**
+
 ```typescript
 <div *ngIf="condition">Content</div>
 ```
 
 **What Angular generates:**
+
 ```typescript
 <ng-template [ngIf]="condition">
   <div>Content</div>
@@ -1709,6 +1836,7 @@ export class RangeDirective implements OnInit {
 ```
 
 **Context Object:**
+
 - `$implicit` - Default value (used with just `let variable`)
 - Any other properties can be accessed with `let alias = propertyName`
 
@@ -1764,6 +1892,7 @@ export class LifecycleDirective implements
 ### Best Practices for Directives
 
 1. **Use standalone directives (Angular 15+):**
+
 ```typescript
 @Directive({
   selector: '[appMyDirective]',
@@ -1772,6 +1901,7 @@ export class LifecycleDirective implements
 ```
 
 2. **Keep directives focused and reusable:**
+
 ```typescript
 // ✅ Good - Single responsibility
 @Directive({ selector: '[appTooltip]' })
@@ -1783,6 +1913,7 @@ export class ManyThingsDirective { }
 ```
 
 3. **Use descriptive selector names with app prefix:**
+
 ```typescript
 // ✅ Good
 selector: '[appHighlight]'
@@ -1794,6 +1925,7 @@ selector: '[click]'
 ```
 
 4. **Clean up in ngOnDestroy:**
+
 ```typescript
 @Directive({ selector: '[appAutoSave]' })
 export class AutoSaveDirective implements OnDestroy {
@@ -1812,6 +1944,7 @@ export class AutoSaveDirective implements OnDestroy {
 ```
 
 5. **Use Renderer2 instead of direct DOM manipulation:**
+
 ```typescript
 // ✅ Good - Safe and SSR-compatible
 constructor(private el: ElementRef, private renderer: Renderer2) {}
@@ -1830,6 +1963,7 @@ ngOnInit() {
 ```
 
 6. **Type your template references:**
+
 ```typescript
 @Directive({ selector: '[appTyped]' })
 export class TypedDirective {
@@ -3207,17 +3341,17 @@ Angular is a **TypeScript-based** platform and framework for building single-pag
 
 **Key differences from AngularJS:**
 
-| Feature | AngularJS (1.x) | Angular (2+) |
-|---------|-----------------|--------------|
-| **Language** | JavaScript | TypeScript |
-| **Architecture** | MVC / Scope-based | Component-based |
-| **Binding** | Two-way (digest cycle) | One-way by default + explicit two-way |
-| **Change Detection** | Dirty checking ($digest) | Zone.js + change detection tree |
-| **Mobile Support** | None | Built-in (PWA, responsive) |
-| **Performance** | Slower (watchers) | Faster (AOT compilation, tree-shaking) |
-| **Dependency Injection** | String-based | Hierarchical, type-based |
-| **Modules** | angular.module() | NgModules / Standalone components |
-| **CLI** | None | Angular CLI |
+| Feature                  | AngularJS (1.x)          | Angular (2+)                           |
+|--------------------------|--------------------------|----------------------------------------|
+| **Language**             | JavaScript               | TypeScript                             |
+| **Architecture**         | MVC / Scope-based        | Component-based                        |
+| **Binding**              | Two-way (digest cycle)   | One-way by default + explicit two-way  |
+| **Change Detection**     | Dirty checking ($digest) | Zone.js + change detection tree        |
+| **Mobile Support**       | None                     | Built-in (PWA, responsive)             |
+| **Performance**          | Slower (watchers)        | Faster (AOT compilation, tree-shaking) |
+| **Dependency Injection** | String-based             | Hierarchical, type-based               |
+| **Modules**              | angular.module()         | NgModules / Standalone components      |
+| **CLI**                  | None                     | Angular CLI                            |
 
 **Current versions:** Angular follows semantic versioning with major releases every 6 months. Angular 15+ introduced standalone APIs as stable, Angular 16+ introduced Signals, Angular 17+ introduced the new control flow syntax (`@if`, `@for`, `@switch`), and Angular 19 made signals fully stable.
 
@@ -3236,6 +3370,7 @@ export class UserModule {}
 ```
 
 **Key module types:**
+
 - **Root Module (AppModule):** The entry point, bootstraps the app
 - **Feature Modules:** Encapsulate features (e.g., `UserModule`, `AdminModule`)
 - **Shared Modules:** Reusable components/pipes/directives shared across features
@@ -3324,6 +3459,7 @@ ng add @angular/material       # Add libraries
 ```
 
 **Key features:**
+
 - **AOT Compilation**: Compiles templates at build time (faster startup)
 - **Tree-shaking**: Removes unused code from bundles
 - **Code splitting**: Lazy-loaded routes get separate chunks
@@ -3337,7 +3473,7 @@ ng add @angular/material       # Add libraries
 
 RxJS is fundamental to Angular for handling asynchronous operations.
 
-#### Key Operators for Interviews
+### Key Operators for Interviews
 
 ```typescript
 import { map, filter, switchMap, mergeMap, concatMap, exhaustMap,
@@ -3379,12 +3515,12 @@ getData$ = this.http.get('/api/data').pipe(
 
 #### Subject Types
 
-| Type | Initial Value | Replays | Use Case |
-|------|---------------|---------|----------|
-| `Subject` | No | No | Event bus |
-| `BehaviorSubject` | Yes (required) | Last value | Current state |
-| `ReplaySubject` | No | N values | Cache history |
-| `AsyncSubject` | No | Last on complete | Final result only |
+| Type              | Initial Value  | Replays          | Use Case          |
+|-------------------|----------------|------------------|-------------------|
+| `Subject`         | No             | No               | Event bus         |
+| `BehaviorSubject` | Yes (required) | Last value       | Current state     |
+| `ReplaySubject`   | No             | N values         | Cache history     |
+| `AsyncSubject`    | No             | Last on complete | Final result only |
 
 ---
 
@@ -3396,23 +3532,23 @@ State management is one of the most important Angular topics for mid-to-senior i
 
 **State** is any data that affects what your app renders. There are four kinds:
 
-| Type | Description | Example |
-|------|-------------|---------|
-| **Local state** | Belongs to one component | form input, toggle |
-| **Shared state** | Needed by multiple components | current user, cart |
-| **Server state** | Data fetched from an API | user list, products |
-| **URL state** | Reflected in the browser URL | current page, filters |
+| Type             | Description                   | Example               |
+|------------------|-------------------------------|-----------------------|
+| **Local state**  | Belongs to one component      | form input, toggle    |
+| **Shared state** | Needed by multiple components | current user, cart    |
+| **Server state** | Data fetched from an API      | user list, products   |
+| **URL state**    | Reflected in the browser URL  | current page, filters |
 
 ### Approaches to State Management in Angular
 
-| Approach | Complexity | Best For |
-|----------|------------|----------|
-| Component `@Input`/`@Output` | Low | Parent-child communication |
-| Service + `BehaviorSubject` | Low-Medium | Small-medium apps |
-| Service + Signals | Low-Medium | Angular 16+ apps |
-| NgRx (Redux pattern) | High | Large, complex apps |
-| NgRx Component Store | Medium | Feature-level state |
-| Akita / NGXS | Medium | Alternatives to NgRx |
+| Approach                     | Complexity | Best For                   |
+|------------------------------|------------|----------------------------|
+| Component `@Input`/`@Output` | Low        | Parent-child communication |
+| Service + `BehaviorSubject`  | Low-Medium | Small-medium apps          |
+| Service + Signals            | Low-Medium | Angular 16+ apps           |
+| NgRx (Redux pattern)         | High       | Large, complex apps        |
+| NgRx Component Store         | Medium     | Feature-level state        |
+| Akita / NGXS                 | Medium     | Alternatives to NgRx       |
 
 ---
 
@@ -3594,6 +3730,7 @@ export class CartComponent {
 ```
 
 **Benefits of Signals over BehaviorSubject:**
+
 - No subscriptions to manage or unsubscribe
 - Synchronous reads — no need for `async` pipe
 - Fine-grained updates — only affected components re-render
@@ -3836,14 +3973,14 @@ export class ProductsPageComponent implements OnInit {
 
 ### When to Use What?
 
-| Scenario | Recommended Approach |
-|----------|---------------------|
-| Simple parent-child communication | `@Input` / `@Output` |
-| Small app (< 5 features) | Service + Signals |
-| Medium app, team familiar with RxJS | Service + BehaviorSubject |
-| Large app, many developers, complex flows | NgRx |
-| Feature-level state isolation | NgRx Component Store |
-| Need time-travel debugging | NgRx + DevTools |
+| Scenario                                  | Recommended Approach      |
+|-------------------------------------------|---------------------------|
+| Simple parent-child communication         | `@Input` / `@Output`      |
+| Small app (< 5 features)                  | Service + Signals         |
+| Medium app, team familiar with RxJS       | Service + BehaviorSubject |
+| Large app, many developers, complex flows | NgRx                      |
+| Feature-level state isolation             | NgRx Component Store      |
+| Need time-travel debugging                | NgRx + DevTools           |
 
 **Interview tip:** Being able to explain the trade-offs between these approaches is more impressive than just knowing one. A common question is: *"How would you manage state in an Angular app?"* — mention the options, explain the trade-offs, and say you'd choose based on team size and complexity.
 
@@ -3876,4 +4013,3 @@ this.totalPrice = this.items.reduce(...);  // ❌ stored, can get out of sync
   ...
 })
 ```
-
