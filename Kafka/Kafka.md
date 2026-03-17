@@ -117,10 +117,25 @@
       - [Benefits Summary](#benefits-summary)
       - [Limitations and Considerations](#limitations-and-considerations)
       - [Troubleshooting](#troubleshooting)
-      - [Best Practices](#best-practices)
+      - [Best Practices](#best-practices-1)
     - [Horizontal Scaling with Brokers](#horizontal-scaling-with-brokers)
     - [Bootstrap Servers and Discovery](#bootstrap-servers-and-discovery)
     - [ZooKeeper and Controller (Cluster Coordination)](#zookeeper-and-controller-cluster-coordination)
+  - [Banking Use Case: Async Transfers with Kafka](#banking-use-case-async-transfers-with-kafka)
+    - [The Problem: Consistency vs. Latency](#the-problem-consistency-vs-latency)
+    - [The Transactional Outbox Pattern](#the-transactional-outbox-pattern)
+      - [Outbox Table Schema](#outbox-table-schema)
+      - [Application Code (Spring Boot)](#application-code-spring-boot)
+    - [Single-Writer Principle](#single-writer-principle)
+    - [Full Bank Transfer Flow](#full-bank-transfer-flow)
+      - [HTTP Status Codes for Async Operations](#http-status-codes-for-async-operations)
+    - [Idempotency on the Consumer Side](#idempotency-on-the-consumer-side)
+      - [Strategy: Deduplication Table](#strategy-deduplication-table)
+      - [Partition Key for Ordering](#partition-key-for-ordering)
+    - [How to Relay the Outbox Event to Kafka (Without External Tools)](#how-to-relay-the-outbox-event-to-kafka-without-external-tools)
+      - [The `@TransactionalEventListener` + Outbox Pattern](#the-transactionaleventlistener--outbox-pattern)
+      - [Why this is the right answer](#why-this-is-the-right-answer)
+    - [Interview Summary](#interview-summary)
 
 Apache Kafka is a distributed event streaming platform designed for high-throughput, fault-tolerant, real-time data processing. Originally developed by LinkedIn and now maintained by the Apache Software Foundation, it's widely used for building real-time data pipelines and streaming applications.
 
@@ -4520,3 +4535,380 @@ Producer wants to write to topic "orders", partition 2:
 - Manage partition reassignments
 - Handle topic creation/deletion
 - Maintain cluster metadata
+
+---
+
+## Banking Use Case: Async Transfers with Kafka
+
+This section answers a classic senior-level interview question:
+
+> *"How would you design a bank transfer system that feels fast to the user but guarantees correctness — using Kafka, without cron jobs, and without losing money?"*
+
+---
+
+### The Problem: Consistency vs. Latency
+
+A naive synchronous transfer looks like this:
+
+```sh
+User clicks "Transfer" →
+  1. DB: debit account A
+  2. DB: credit account B
+  3. Publish Kafka event "TransferCompleted"
+  4. Return 200 OK
+```
+
+**What goes wrong?**
+
+- Step 3 can fail after steps 1+2 committed → Kafka never knows → downstream services (notifications, ledger, fraud, audit) never triggered.
+- If step 1 or 2 fails mid-way, partial updates happen unless wrapped in a transaction.
+- The DB and Kafka are **two different systems** — you cannot have a distributed transaction across both with standard JDBC + Kafka.
+
+This is the **dual-write problem**: writing to two systems atomically is impossible without a coordination protocol.
+
+---
+
+### The Transactional Outbox Pattern
+
+The solution is to **never write directly to Kafka from your service**. Instead:
+
+1. Write to the DB and an **outbox table** in the **same local DB transaction**.
+2. A separate relay process reads the outbox and publishes to Kafka.
+
+```sh
+┌─────────────────────────────────┐
+│        Transfer Service         │
+│                                 │
+│  BEGIN TRANSACTION              │
+│    UPDATE accounts (debit A)    │
+│    UPDATE accounts (credit B)   │
+│    INSERT INTO outbox (event)   │ ← same transaction!
+│    publishEvent(trigger)        │ ← Spring in-memory event
+│  COMMIT                         │
+└─────────────────────────────────┘
+              │
+              ▼  @TransactionalEventListener(AFTER_COMMIT) fires
+┌──────────────────────────────────┐
+│  OutboxRelayPublisher            │──► Kafka topic: bank.transfers
+│  (Spring @Component, built-in)   │
+└──────────────────────────────────┘
+              │
+              ▼
+┌──────────────────────────────────────────────────────┐
+│  Consumers: Notification, Fraud, Ledger, Audit...    │
+└──────────────────────────────────────────────────────┘
+```
+
+**Key guarantee**: The debit + credit + outbox INSERT are atomic. Either all succeed or none do. The outbox row is the proof that the event must be published.
+
+#### Outbox Table Schema
+
+```sql
+CREATE TABLE outbox (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type  VARCHAR(100) NOT NULL,         -- e.g. 'TRANSFER_INITIATED'
+    payload     JSONB NOT NULL,                -- full event data
+    topic       VARCHAR(200) NOT NULL,         -- target Kafka topic
+    status      VARCHAR(20) DEFAULT 'PENDING', -- PENDING | SENT
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    sent_at     TIMESTAMP
+);
+
+CREATE INDEX idx_outbox_status ON outbox(status) WHERE status = 'PENDING';
+```
+
+#### Application Code (Spring Boot)
+
+```java
+@Service
+@RequiredArgsConstructor
+public class TransferService {
+
+    private final AccountRepository accountRepo;
+    private final OutboxRepository outboxRepo;
+
+    @Transactional  // single DB transaction — both writes are atomic
+    public TransferResult transfer(TransferRequest req) {
+        Account from = accountRepo.findByIdForUpdate(req.fromAccountId()); // SELECT FOR UPDATE
+        Account to   = accountRepo.findByIdForUpdate(req.toAccountId());
+
+        if (from.getBalance().compareTo(req.amount()) < 0) {
+            throw new InsufficientFundsException();
+        }
+
+        from.debit(req.amount());
+        to.credit(req.amount());
+
+        // Write domain event to outbox — same transaction
+        OutboxEvent event = OutboxEvent.builder()
+            .eventType("TRANSFER_INITIATED")
+            .topic("bank.transfers")
+            .payload(buildPayload(req, from, to))
+            .build();
+
+        outboxRepo.save(event);
+
+        // Return immediately — Kafka publish happens asynchronously
+        return TransferResult.accepted(req.transactionId());
+    }
+}
+```
+
+> ⚡ The user gets **200 Accepted** (or **202 Accepted**) in **< 50ms** — only local DB writes, no Kafka round-trip in the critical path.
+
+---
+
+### Single-Writer Principle
+
+> **Only one service owns a piece of data and is allowed to write to it.**
+
+In the banking context:
+
+- The **Account Service** is the **single writer** for account balances.
+- No other service (Notification, Fraud, Audit) ever directly writes to the `accounts` table.
+- All downstream services consume Kafka events and maintain their own **read models**.
+
+**Why this matters:**
+
+| Without Single-Writer                              | With Single-Writer                                        |
+|----------------------------------------------------|-----------------------------------------------------------|
+| Multiple services update balance → race conditions | Only Account Service modifies balance → no conflicts      |
+| Hard to reason about who changed what              | Clear audit trail                                         |
+| Need distributed locking across services           | Local DB locks are sufficient                             |
+| Inconsistent reads across services                 | Each service has its own eventually-consistent read model |
+
+**Practical enforcement:**
+
+```java
+// ✅ Account Service owns writes
+@RestController
+@RequestMapping("/api/accounts")
+public class AccountController {
+    @PostMapping("/{id}/transfer")
+    public ResponseEntity<TransferResult> transfer(...) { ... }
+}
+
+// ❌ Fraud Service should NOT do this:
+accountRepository.save(updatedAccount); // Never — it's not the owner!
+// ✅ Fraud Service should do this:
+kafkaTemplate.send("fraud.alerts", fraudEvent); // Publish its own events
+```
+
+---
+
+### Full Bank Transfer Flow
+
+This is the complete end-to-end flow combining low latency + correctness + async processing:
+
+```
+1. User submits transfer via REST API
+         │
+         ▼
+2. Transfer Service
+   ├── Validate (balance check, limits)
+   ├── BEGIN TRANSACTION
+   │    ├── Debit account A (SELECT FOR UPDATE → UPDATE)
+   │    ├── Credit account B (SELECT FOR UPDATE → UPDATE)
+   │    └── INSERT INTO outbox (TRANSFER_INITIATED event)
+   └── COMMIT
+   └── Return 202 Accepted { transactionId: "abc-123" } ← fast!
+         │
+         ▼
+3. @TransactionalEventListener(AFTER_COMMIT) fires automatically
+   └── OutboxRelayPublisher reads outbox row → publishes to Kafka: topic=bank.transfers, key=accountId
+         │
+         ▼ (async, milliseconds later)
+4. Kafka Consumers (each in its own consumer group):
+   ├── Ledger Service      → records the double-entry in ledger
+   ├── Notification Service → sends push/email to user
+   ├── Fraud Service       → scores the transaction
+   └── Audit Service       → writes to immutable audit log
+         │
+         ▼
+5. User polls GET /api/transfers/abc-123
+   └── Returns status: COMPLETED / PENDING / FAILED
+```
+
+#### HTTP Status Codes for Async Operations
+
+| Status | Meaning |
+|--------|---------|
+| `202 Accepted` | Request received, processing async. Returns `{ transactionId }`. |
+| `200 OK` | Synchronous — result is in the response body. Don't use for async. |
+| `409 Conflict` | Duplicate request detected (same idempotency key). |
+
+---
+
+### Idempotency on the Consumer Side
+
+Kafka delivers **at-least-once** by default. The `@TransactionalEventListener` could fire more than once on retry, and Kafka itself may redeliver messages on consumer restart. Every consumer **must** be idempotent.
+
+#### Strategy: Deduplication Table
+
+```sql
+CREATE TABLE processed_events (
+    event_id   UUID PRIMARY KEY,
+    processed_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+```java
+@KafkaListener(topics = "bank.transfers", groupId = "ledger-service")
+@Transactional
+public void onTransfer(TransferEvent event) {
+    // Idempotency check + business logic in one transaction
+    if (processedEventRepo.existsById(event.getEventId())) {
+        log.info("Duplicate event {}, skipping", event.getEventId());
+        return;
+    }
+
+    ledgerService.recordEntry(event);                          // business logic
+    processedEventRepo.save(new ProcessedEvent(event.getEventId())); // mark done
+}
+// If the transaction rolls back, the event is not marked as processed → safe retry
+```
+
+#### Partition Key for Ordering
+
+Use the **account ID as the Kafka partition key**. This guarantees:
+- All events for the same account are in the **same partition** → strictly ordered.
+- Concurrent events for different accounts are processed in parallel → high throughput.
+
+```java
+kafkaTemplate.send("bank.transfers", transfer.getFromAccountId().toString(), event);
+//                  topic              key (partition selector)              value
+```
+
+---
+
+### How to Relay the Outbox Event to Kafka (Without External Tools)
+
+The answer is **Spring's `@TransactionalEventListener`** — built into Spring, no extra libraries.
+
+**The key idea:**
+- Inside the `@Transactional` method, call `eventPublisher.publishEvent(...)` — this queues an **in-memory** Spring event (nothing happens yet)
+- Spring **holds** it until the DB transaction commits
+- If the transaction **rolls back**, the event is silently **discarded** — Kafka is never touched
+- After a successful commit, Spring fires the listener immediately → Kafka publish happens
+
+No polling. No cron. No external tools.
+
+---
+
+#### The `@TransactionalEventListener` + Outbox Pattern
+
+Write to the outbox in the same transaction, trigger the relay via `AFTER_COMMIT`:
+
+```java
+// 1. In-memory trigger event (plain Java record)
+public record OutboxRelayTrigger(UUID outboxId) {}
+```
+
+```java
+// 2. Service: everything in one DB transaction
+@Service
+@RequiredArgsConstructor
+public class TransferService {
+
+    private final AccountRepository accountRepo;
+    private final OutboxRepository outboxRepo;
+    private final ApplicationEventPublisher eventPublisher; // Spring built-in
+
+    @Transactional
+    public TransferResult transfer(TransferRequest req) {
+        Account from = accountRepo.findByIdForUpdate(req.fromAccountId()); // SELECT FOR UPDATE
+        Account to   = accountRepo.findByIdForUpdate(req.toAccountId());
+
+        from.debit(req.amount());
+        to.credit(req.amount());
+
+        // Write outbox row atomically with the balance changes
+        OutboxEvent saved = outboxRepo.save(OutboxEvent.builder()
+            .eventId(req.transactionId())
+            .eventType("TRANSFER_COMPLETED")
+            .payload(serialize(req))
+            .build());
+
+        // Queue the in-memory trigger — Spring holds it until AFTER commit
+        eventPublisher.publishEvent(new OutboxRelayTrigger(saved.getId()));
+
+        return TransferResult.accepted(req.transactionId()); // 202 returned immediately
+    }
+}
+```
+
+```java
+// 3. Relay: fires automatically after the DB transaction commits
+@Component
+@RequiredArgsConstructor
+public class OutboxRelayPublisher {
+
+    private final OutboxRepository outboxRepo;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void relay(OutboxRelayTrigger trigger) {
+        OutboxEvent event = outboxRepo.findById(trigger.outboxId()).orElseThrow();
+
+        kafkaTemplate.send("bank.transfers", event.getEventId(), event.getPayload())
+            .whenComplete((result, ex) -> {
+                if (ex == null) {
+                    outboxRepo.markAsSent(event.getId()); // Clean up outbox row
+                } else {
+                    // Row stays PENDING — can be recovered on restart or via retry endpoint
+                    log.error("Kafka publish failed, outbox row retained for recovery", ex);
+                }
+            });
+    }
+}
+```
+
+#### Why this is the right answer
+
+| Property                    | Guarantee                                         |
+|-----------------------------|---------------------------------------------------|
+| DB rollback → no Kafka call | ✅ `AFTER_COMMIT` only fires on success            |
+| App crash after commit      | ✅ Outbox row stays `PENDING` — durable safety net |
+| No cron job / polling       | ✅ Purely event-driven                             |
+| No external tools           | ✅ Pure Spring                                     |
+| Low latency                 | ✅ Fires immediately after commit                  |
+
+**The one remaining edge case:** app crashes in the window between DB commit and Kafka publish. The outbox row survives (it's in the DB), so on restart you can replay any `PENDING` rows. This is the recovery path — not the happy path.
+
+---
+
+### Interview Summary
+
+If asked *"How do you handle a bank transfer with low latency but guaranteed consistency?"*, answer with these key points:
+
+1. **ACID local transaction**: Debit + credit happen in one DB transaction. No partial state possible.
+
+2. **Dual-write problem**: You can't atomically write to both a DB and Kafka. The DB is always the source of truth.
+
+3. **`@TransactionalEventListener(AFTER_COMMIT)`**: Spring built-in. Publishes to Kafka only after the DB commits. No polling, no external tools. Simple and clean for an interview.
+
+4. **Outbox for production**: For zero tolerance of lost events, add an outbox table written atomically with the business data. The `@TransactionalEventListener` relays it — no external tools needed.
+
+5. **Single-Writer**: Only the Account Service writes balances. Other services consume events.
+
+6. **Low latency to user**: Return `202 Accepted` after DB commit (~10–50ms). Kafka publish is async.
+
+7. **Idempotent consumers**: Every downstream consumer deduplicates by `eventId`.
+
+8. **Partition key = accountId**: Guarantees ordering of events per account.
+
+```sh
+┌─────────────────────────────────────────────────────────────────────┐
+│                    BANK TRANSFER GUARANTEE STACK                    │
+├──────────────────────┬──────────────────────────────────────────────┤
+│ Correctness          │ ACID + single DB transaction                 │
+│ Durability           │ DB WAL + Kafka replication (acks=all)        │
+│ No dual-write        │ Outbox written in same transaction           │
+│ No lost events       │ @TransactionalEventListener(AFTER_COMMIT)    │
+│ No duplicates        │ Idempotent consumers + dedup table           │
+│ Ordering             │ Partition key = accountId                    │
+│ Low latency to user  │ 202 Accepted before Kafka publish            │
+│ Single authority     │ Single-Writer per aggregate                  │
+│ No external tools    │ Pure Spring — no external tools, no cron     │
+└──────────────────────┴──────────────────────────────────────────────┘
+```
