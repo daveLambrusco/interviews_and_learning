@@ -7,6 +7,7 @@ This file serves as a **hub** linking to topic-specific Q&A files. Each technolo
 1. [📚 Topic Index](#-topic-index) — Links to all topic-specific files
 2. [General Full Stack](#general-full-stack) — MVC, REST, security, build tools, performance
 3. [CORS](#cors) — Same-origin policy, preflight requests, origin spoofing, bearer tokens
+4. [Banking Interview: Consistency, ACID & Async Transfers](#banking-interview-consistency-acid--async-transfers) — ACID, single-writer, Outbox pattern, Kafka, low-latency transactions
 
 ---
 
@@ -274,3 +275,147 @@ If you want to be extra secure:
 - Spoofing `Origin` works — but only matters if your server actually uses it for security.
 - The **Bearer token is the real security control** — so protect it.
 - CORS protects **users**, not servers.
+
+---
+
+## Banking Interview: Consistency, ACID & Async Transfers
+
+> *"How would you design a bank transfer system that feels fast to the user but guarantees correctness — using Kafka, without cron jobs?"*
+
+This is a **classic senior-level question** that tests your knowledge of distributed systems, database guarantees, and event-driven architecture simultaneously.
+
+---
+
+### Key Concepts at a Glance
+
+| Concept                         | What it means for banking                                                             |
+|---------------------------------|---------------------------------------------------------------------------------------|
+| **ACID**                        | Local DB transaction guarantees: no partial debit/credit                              |
+| **Single-Writer**               | Only the Account Service writes balances — no concurrent writers                      |
+| **Dual-Write Problem**          | Can't atomically write to DB + Kafka in the same operation                            |
+| **Transactional Outbox**        | Solve dual-write: write DB + outbox atomically, relay to Kafka separately             |
+| **@TransactionalEventListener** | Spring built-in: fires Kafka publish **after** DB commit — no polling, no extra tools |
+| **202 Accepted**                | Return to user immediately after DB commit; Kafka is async                            |
+| **Idempotent Consumers**        | Deduplicate by `eventId` — safe against Kafka's at-least-once delivery                |
+
+---
+
+### Why Not a Synchronous Transfer?
+
+A naive approach writes to both DB and Kafka in the same request:
+
+```sh
+1. DB: debit account A  ✓
+2. DB: credit account B ✓
+3. Kafka: publish event ← FAILS here → downstream services never notified!
+```
+
+Or worse:
+
+```sh
+1. Kafka: publish event ✓
+2. DB: debit/credit     ← FAILS → event published but money not moved!
+```
+
+There is no 2-phase-commit between a relational DB and Kafka. You must choose one as the **source of truth** — and that's always the **database**.
+
+---
+
+### The Correct Architecture
+
+**See detailed notes with full code examples:** → [Kafka.md — Banking Use Case](Kafka/Kafka.md#banking-use-case-async-transfers-with-kafka)
+
+**See ACID, isolation levels and locking strategies:** → [SQL questions.md — ACID Properties & Transactions](SQL%20questions.md#acid-properties--transactions)
+
+High-level flow:
+
+```sh
+User → POST /transfer
+         │
+         ▼
+  Transfer Service
+  ┌───────────────────────────────────────────────┐
+  │  BEGIN TRANSACTION                            │
+  │    UPDATE accounts (debit A)                  │
+  │    UPDATE accounts (credit B)                 │  ← ACID guarantees atomicity
+  │    INSERT INTO outbox (event)                 │  ← same transaction = no dual-write
+  │    eventPublisher.publishEvent(outboxTrigger) │  ← Spring in-memory event
+  │  COMMIT                                       │
+  └───────────────────────────────────────────────┘
+         │
+         │  Return 202 Accepted { transactionId } ← user sees fast response
+         │
+         ▼
+  @TransactionalEventListener(AFTER_COMMIT) fires
+  → publishes to Kafka (event-driven, no cron, no extra tools)
+         │
+         ▼
+  Consumers: Ledger, Notification, Fraud, Audit (each idempotent)
+         │
+         ▼
+  User polls GET /transfer/{id} → COMPLETED
+```
+
+---
+
+### Single-Writer Principle
+
+Only **one service** is allowed to write to a given piece of data.
+
+- ✅ Account Service writes to `accounts` table
+- ❌ Fraud Service should NEVER write to `accounts` — it only publishes fraud events
+- ❌ Notification Service should NEVER update balances — it only reads events
+
+This eliminates race conditions, makes auditing trivial, and means local DB locks (not distributed locks) are sufficient.
+
+---
+
+### ⚡ Latency Strategy
+
+| Phase                                    | Latency    | What happens                   |
+|------------------------------------------|------------|--------------------------------|
+| DB transaction (debit + credit + outbox) | ~5–30ms    | ACID write, SELECT FOR UPDATE  |
+| HTTP response to user                    | ~10–50ms   | 202 Accepted                   |
+| `@TransactionalEventListener` → Kafka    | ~1–10ms    | Fires immediately after commit |
+| Consumer processing                      | ~100–500ms | Per consumer group             |
+| User sees "Completed"                    | ~200ms–2s  | Via polling or WebSocket       |
+
+The user **never waits for Kafka**. The critical path is only the DB transaction.
+
+---
+
+### No Cron Job — How `@TransactionalEventListener` Works
+
+Spring's `@TransactionalEventListener(phase = AFTER_COMMIT)` is the key:
+
+- Inside the `@Transactional` method, you call `eventPublisher.publishEvent(...)` — this queues an **in-memory** Spring event
+- Spring **holds** the event until the DB transaction successfully commits
+- If the transaction **rolls back**, the event is silently **discarded** — Kafka is never called
+- After a successful commit, Spring fires the listener → Kafka publish happens immediately
+
+This is **completely event-driven** — no polling, no cron, no external infrastructure.
+
+The outbox table is the safety net: if the app crashes between commit and Kafka publish, the row stays `PENDING` and can be recovered (e.g. on startup, or via a low-frequency fallback job that only runs when needed).
+
+---
+
+### Consistency Guarantees Summary
+
+```sh
+┌─────────────────────────────────────────────────────────────────┐
+│               WHAT GUARANTEES WHAT                              │
+├──────────────────────┬──────────────────────────────────────────┤
+│ Atomicity            │ DB transaction (COMMIT/ROLLBACK)         │
+│ No partial transfer  │ ACID + single transaction                │
+│ No lost events       │ Outbox in same transaction as write      │
+│ No duplicate effects │ Idempotent consumers + dedup table       │
+│ Ordering per account │ Kafka partition key = accountId          │
+│ Durability           │ DB WAL¹ + Kafka acks=all                 │
+│ Low latency to user  │ 202 before Kafka (async path)            │
+│ No cron / no polling │ @TransactionalEventListener(AFTER_COMMIT)│
+│ No external tools    │ Pure Spring — no Debezium                │
+└──────────────────────┴──────────────────────────────────────────┘
+```
+
+> ¹ **WAL (Write-Ahead Log)** — the database writes changes to an append-only log file *before* touching data pages. On crash, the DB replays the log to recover committed data. → See full explanation: [SQL questions.md — WAL](SQL%20questions.md#what-is-the-wal-write-ahead-log)
+

@@ -2,39 +2,13 @@
 
 ## Table of Contents
 
-1. [SQL](#sql)
-   - [DDL](#ddl-data-definition-language) — CREATE, ALTER, DROP, TRUNCATE, INDEX
-   - [DML](#dml-data-manipulation-language) — SELECT, INSERT, UPDATE, DELETE
-   - [JOINs](#join) — INNER, LEFT, RIGHT, FULL OUTER, CROSS, SELF
-   - [Aggregate Functions](#funzioni-aggregate) — COUNT, SUM, AVG, MIN, MAX
-   - [GROUP BY & HAVING](#group-by-e-having)
-   - [Subqueries](#subquery) — WHERE, IN, EXISTS, SELECT, FROM
-   - [Window Functions](#window-functions-over) — ROW_NUMBER, RANK, DENSE_RANK, PARTITION BY, LAG/LEAD
-   - [CASE](#case-conditional-logic), [UNION / UNION ALL](#union--union-all), [CTE](#cte-common-table-expressions)
-2. [Stored Procedures & Functions](#stored-procedures--functions)
-   - [What is a Stored Procedure?](#what-is-a-stored-procedure)
-   - [Stored Procedure Syntax](#stored-procedure-syntax-mysql--postgresql)
-   - [Functions vs Procedures](#stored-functions-vs-stored-procedures)
-   - [Variables, Conditionals & Loops](#variables-conditionals-and-loops)
-   - [Error Handling](#error-handling-in-stored-procedures)
-   - [Triggers](#triggers)
-3. [Query Optimization](#query-optimization)
-   - [EXPLAIN / EXPLAIN ANALYZE](#understanding-explain--explain-analyze)
-   - [Indexes Deep Dive](#indexes-deep-dive) — single, composite, covering, partial index
-   - [N+1 Query Problem](#the-n1-query-problem)
-   - [Optimization Techniques](#query-optimization-techniques) — SELECT *, functions on indexed columns, EXISTS vs IN, keyset pagination
-   - [Query Execution Order](#query-execution-order)
-4. [SQL Best Practices](#sql-best-practices)
-   - [Schema Design & Normalization](#schema-design-best-practices) — 1NF, 2NF, 3NF, when to denormalize
-   - [Transaction Best Practices](#transaction-best-practices)
-   - [Isolation Levels](#transaction-isolation-levels) — dirty reads, non-repeatable reads, phantom reads
-5. [NoSQL](#nosql) — Types, SQL vs NoSQL comparison
-6. [MongoDB](#mongodb)
-   - [Architecture & Document Structure](#mongodb-architecture)
-   - [CRUD Operations](#crud-operations)
-   - [Aggregation Pipeline](#aggregation-pipeline)
-   - [Indexing](#indexing-in-mongodb)
-   - [MongoDB with Spring Boot](#mongodb-with-spring-boot)
+1. [SQL](#sql) — DDL, DML, JOINs, Aggregate Functions, GROUP BY, Subqueries, Window Functions, CASE, UNION, CTE
+2. [Stored Procedures & Functions](#stored-procedures--functions) — Procedures, Functions, Triggers, Error Handling
+3. [Query Optimization](#query-optimization) — EXPLAIN, Indexes, N+1, Optimization Techniques
+4. [SQL Best Practices](#sql-best-practices) — Schema Design, Normalization, Transactions, Isolation Levels
+5. [ACID Properties & Transactions](#acid-properties--transactions) — ACID, WAL (Write-Ahead Log), Isolation Levels, Locking, Deadlocks, Banking scenarios
+6. [NoSQL](#nosql) — NoSQL types, SQL vs NoSQL comparison
+7. [MongoDB](#mongodb) — CRUD, Aggregation Pipeline, Indexing, Spring Boot integration
 
 ---
 
@@ -536,6 +510,7 @@ SELECT * FROM employee_hierarchy;
 A **stored procedure** is a precompiled set of SQL statements stored in the database that can be executed by name. Unlike a regular query sent from the application, a stored procedure lives on the database server.
 
 **Benefits:**
+
 - **Performance**: Precompiled and cached execution plan
 - **Reduced network traffic**: Send one call instead of many SQL statements
 - **Reusability**: Can be called from multiple applications
@@ -543,6 +518,7 @@ A **stored procedure** is a precompiled set of SQL statements stored in the data
 - **Encapsulation**: Business logic lives in the DB (though debated)
 
 **Drawbacks:**
+
 - Hard to version control and test
 - Business logic scattered between app and DB
 - Tightly couples application to a specific database engine
@@ -594,13 +570,13 @@ $$;
 
 ### Stored Functions vs Stored Procedures
 
-| Feature | Stored Function | Stored Procedure |
-|---------|----------------|------------------|
-| **Returns** | Single value | Zero or more result sets |
-| **Call in SQL** | Yes (`SELECT my_func()`) | No (`CALL my_proc()`) |
-| **DML inside** | Generally read-only | Can INSERT/UPDATE/DELETE |
-| **Transaction control** | Cannot | Can |
-| **Use case** | Computations, transformations | Business workflows |
+| Feature                 | Stored Function               | Stored Procedure         |
+|-------------------------|-------------------------------|--------------------------|
+| **Returns**             | Single value                  | Zero or more result sets |
+| **Call in SQL**         | Yes (`SELECT my_func()`)      | No (`CALL my_proc()`)    |
+| **DML inside**          | Generally read-only           | Can INSERT/UPDATE/DELETE |
+| **Transaction control** | Cannot                        | Can                      |
+| **Use case**            | Computations, transformations | Business workflows       |
 
 ```sql
 -- Stored FUNCTION (returns a value, usable in SELECT)
@@ -721,6 +697,7 @@ DELIMITER ;
 ```
 
 **Types of triggers:**
+
 - `BEFORE INSERT / UPDATE / DELETE` — validate or modify data before the operation
 - `AFTER INSERT / UPDATE / DELETE` — audit logging, cascading updates
 
@@ -780,6 +757,7 @@ WHERE active = true;
 ```
 
 **Index selectivity rule:** High selectivity = few rows per value = better index.
+
 - `status` column with 3 values → low selectivity → bad index candidate
 - `email` column with unique values → high selectivity → excellent index candidate
 
@@ -907,6 +885,7 @@ LIMIT 10;                                           -- 8. LIMIT
 ```
 
 **Key implications:**
+
 - You **can't** use `SELECT` aliases in `WHERE` (WHERE runs before SELECT)
 - You **can** use `SELECT` aliases in `ORDER BY` (ORDER BY runs after SELECT)
 - `WHERE` filters rows before grouping — use `HAVING` to filter groups
@@ -921,11 +900,11 @@ LIMIT 10;                                           -- 8. LIMIT
 
 Normalization reduces redundancy and improves data integrity.
 
-| Normal Form | Rule |
-|-------------|------|
-| **1NF** | Each cell contains a single value; no repeating groups |
-| **2NF** | 1NF + no partial dependencies (non-key columns depend on the whole PK) |
-| **3NF** | 2NF + no transitive dependencies (non-key columns depend only on PK) |
+| Normal Form | Rule                                                                   |
+|-------------|------------------------------------------------------------------------|
+| **1NF**     | Each cell contains a single value; no repeating groups                 |
+| **2NF**     | 1NF + no partial dependencies (non-key columns depend on the whole PK) |
+| **3NF**     | 2NF + no transitive dependencies (non-key columns depend only on PK)   |
 
 ```sql
 -- ❌ Violation of 1NF: multiple values in one cell
@@ -958,6 +937,7 @@ CREATE TABLE employees (id INT PRIMARY KEY, department_id INT REFERENCES departm
 #### When to Denormalize
 
 Sometimes intentional denormalization is appropriate for **read performance**:
+
 - Reporting tables / data warehouses
 - Read-heavy analytics queries
 - When JOINs become too expensive
@@ -1032,6 +1012,242 @@ SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT * FROM employees WHERE department_id = 99;  -- verify
 DELETE FROM employees WHERE department_id = 99;     -- then delete
 ```
+
+---
+
+## ACID Properties & Transactions
+
+### What does ACID stand for?
+
+**ACID** is the set of properties that guarantee database transactions are processed reliably. It is the cornerstone of relational databases and critically important in financial systems.
+
+| Property        | Meaning                                                                                                                                                      |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **A**tomicity   | A transaction is **all-or-nothing**. Either every operation succeeds, or the entire transaction is rolled back. No partial writes.                           |
+| **C**onsistency | A transaction brings the database from one **valid state** to another. All integrity constraints, rules, and cascades are respected before and after.        |
+| **I**solation   | Concurrent transactions behave as if they were executed **sequentially**. Intermediate states of a transaction are invisible to others.                      |
+| **D**urability  | Once a transaction is **committed**, it is permanent — even in the event of a crash, power loss, or system failure. Data is written to disk (WAL/redo logs). |
+
+---
+
+### Why is ACID critical for banking?
+
+In a bank, every cent must be accounted for. Consider a transfer of €500 from Account A to Account B:
+
+```sql
+START TRANSACTION;
+  UPDATE accounts SET balance = balance - 500 WHERE id = 1; -- Debit A
+  UPDATE accounts SET balance = balance + 500 WHERE id = 2; -- Credit B
+COMMIT;
+```
+
+- **Atomicity**: If the credit fails (e.g., account 2 doesn't exist), the debit is rolled back. Money doesn't vanish.
+- **Consistency**: Constraint `balance >= 0` is enforced — you can't overdraft if the rule is in place.
+- **Isolation**: Another transaction reading account 1's balance mid-transfer won't see the deducted amount until commit.
+- **Durability**: After `COMMIT`, the transfer survives a server crash. The WAL (Write-Ahead Log) ensures this.
+
+---
+
+### What is the WAL (Write-Ahead Log)?
+
+The **Write-Ahead Log** is how databases guarantee **Durability**. It's one of the most important concepts in database internals.
+
+#### The core rule
+
+> **Write to the log first, apply to the actual data files second.**
+
+Before the database modifies any data on disk, it first writes a description of that change to a sequential append-only log file — the WAL. Only after the log entry is safely on disk does the database confirm the `COMMIT` to the client.
+
+#### Why does this matter?
+
+Imagine the server crashes right after `COMMIT` but before the actual data pages on disk are updated:
+
+```
+COMMIT received ✓
+WAL entry written to disk ✓
+Server crashes here  <-----
+Data pages on disk NOT yet updated ✗
+```
+
+On restart, the database reads the WAL and **replays** any committed transactions whose changes hadn't yet reached the data files. The data is recovered automatically. No data loss.
+
+This is called **crash recovery** (or **redo recovery**).
+
+#### What's in a WAL entry?
+
+Each entry records exactly what changed:
+
+```
+LSN 1042 | TXN-881 | UPDATE accounts SET balance=4500 WHERE id=1  (was 5000)
+LSN 1043 | TXN-881 | UPDATE accounts SET balance=5500 WHERE id=2  (was 5000)
+LSN 1044 | TXN-881 | COMMIT
+```
+
+- **LSN** = Log Sequence Number — a monotonically increasing ID for each log record
+- The log is **append-only** and **sequential** — much faster than random disk writes to data pages
+
+#### WAL and performance
+
+Writing to the WAL is fast because it's **sequential I/O** (appending to a file), whereas updating data pages is **random I/O** (jumping to different locations on disk). The WAL is the reason databases can be both fast and durable — you pay only one sequential write per commit, and the slower random writes to data pages happen in the background at the database's own pace (this is called a **checkpoint**).
+
+```
+Fast path (commit):        Client → WAL append → COMMIT ack  (~1ms)
+Background (async):        WAL → data pages flushed to disk   (background, no user impact)
+```
+
+#### WAL in PostgreSQL vs MySQL
+
+|               | PostgreSQL                    | MySQL (InnoDB)                       |
+|---------------|-------------------------------|--------------------------------------|
+| Name          | WAL                           | Redo Log (iblogfile)                 |
+| Location      | `pg_wal/` directory           | `ib_logfile0`, `ib_logfile1`         |
+| Also used for | Replication (streaming), PITR | Replication (binlog), crash recovery |
+| Log format    | Byte-level page changes       | Logical + physical changes           |
+
+#### WAL and replication
+
+The WAL is also the foundation of **database replication**. PostgreSQL streaming replication works by shipping WAL entries to replica nodes, which replay them in order — keeping the replica in sync without any separate sync mechanism.
+
+```
+Primary DB  →  WAL entries  →  Replica 1 (reads WAL, replays)
+                           →  Replica 2 (reads WAL, replays)
+```
+
+This is also why Debezium (CDC) can "tap into" the WAL to detect changes — it reads the same log the replicas use.
+
+#### TL;DR for the interview
+
+- WAL = append-only log of all changes, written **before** touching actual data
+- Guarantees **Durability**: committed data survives crashes via replay on restart
+- Makes commits **fast**: sequential write to log >> random writes to data pages
+- Powers **replication**: replicas replay the same WAL entries as the primary
+
+---
+
+### Transaction Isolation Levels — Deep Dive
+
+Isolation has **levels** that trade off consistency for performance:
+
+| Level              | Dirty Read  | Non-Repeatable Read | Phantom Read | Use Case                                   |
+|--------------------|-------------|---------------------|--------------|--------------------------------------------|
+| `READ UNCOMMITTED` | ✅ Possible  | ✅ Possible          | ✅ Possible   | Analytics on non-critical data             |
+| `READ COMMITTED`   | ❌ Prevented | ✅ Possible          | ✅ Possible   | Default in PostgreSQL — good for most apps |
+| `REPEATABLE READ`  | ❌ Prevented | ❌ Prevented         | ✅ Possible   | Default in MySQL/InnoDB                    |
+| `SERIALIZABLE`     | ❌ Prevented | ❌ Prevented         | ❌ Prevented  | **Banking, financial transfers**           |
+
+#### Anomaly Definitions
+
+- **Dirty Read**: You read data written by a transaction that hasn't committed yet — and might roll back.
+- **Non-Repeatable Read**: You read the same row twice in a transaction and get different values (another transaction committed a change between reads).
+- **Phantom Read**: You run the same range query twice and get different rows (another transaction inserted/deleted rows).
+
+#### Which level for banking?
+
+For the **debit/credit** operation itself → `REPEATABLE READ` or `SERIALIZABLE` to prevent balance being read mid-update.
+
+For **reporting/statement queries** → `READ COMMITTED` is fine and much faster.
+
+```sql
+-- PostgreSQL: set per transaction
+BEGIN;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+UPDATE accounts SET balance = balance - 500 WHERE id = 1;
+UPDATE accounts SET balance = balance + 500 WHERE id = 2;
+COMMIT;
+```
+
+---
+
+### Locking Strategies
+
+When concurrent transactions access the same rows, the database uses locks to enforce isolation.
+
+#### Pessimistic Locking
+
+Lock the row **before** reading/updating it. Other transactions block until the lock is released.
+
+```sql
+-- PostgreSQL: SELECT FOR UPDATE
+BEGIN;
+SELECT balance FROM accounts WHERE id = 1 FOR UPDATE; -- Locks the row
+UPDATE accounts SET balance = balance - 500 WHERE id = 1;
+COMMIT;
+```
+
+- ✅ Guarantees no concurrent modification
+- ❌ Can cause contention and reduced throughput under high concurrency
+- **Best for**: High-value, low-frequency operations (e.g., wire transfers)
+
+#### Optimistic Locking
+
+Don't lock on read — instead, include a **version field**. On update, check the version hasn't changed. If it has, retry.
+
+```sql
+-- Schema: add a version column
+ALTER TABLE accounts ADD COLUMN version INT NOT NULL DEFAULT 0;
+
+-- Application-level optimistic lock check
+UPDATE accounts
+SET balance = balance - 500, version = version + 1
+WHERE id = 1 AND version = 3; -- only succeeds if still at version 3
+
+-- If 0 rows affected → conflict → retry
+```
+
+With JPA/Hibernate:
+
+```java
+@Entity
+public class Account {
+    @Id
+    private Long id;
+    private BigDecimal balance;
+
+    @Version
+    private int version; // Hibernate manages this automatically
+}
+// If two transactions read version=3 and both try to update, only one succeeds.
+// The other gets OptimisticLockException → retry logic needed.
+```
+
+- ✅ No blocking, much better throughput
+- ❌ Requires retry logic
+- **Best for**: High-read, low-conflict scenarios (e.g., user profile updates)
+
+---
+
+### Deadlocks
+
+A **deadlock** occurs when two transactions each hold a lock the other needs, creating a circular wait.
+
+```
+Transaction 1: locks Account A → waits for Account B
+Transaction 2: locks Account B → waits for Account A
+→ Deadlock!
+```
+
+#### Prevention Strategies
+
+1. **Always lock in a consistent order** — e.g., always lock the lower account ID first:
+
+   ```java
+   long firstId = Math.min(fromAccountId, toAccountId);
+   long secondId = Math.max(fromAccountId, toAccountId);
+   // Lock firstId before secondId — always
+   ```
+
+2. **Keep transactions short** — hold locks for the minimum time possible.
+
+3. **Use `SELECT FOR UPDATE SKIP LOCKED`** — skip rows already locked (useful for queue-style processing):
+
+   ```sql
+   SELECT * FROM payment_queue WHERE status = 'PENDING'
+   ORDER BY created_at
+   LIMIT 1
+   FOR UPDATE SKIP LOCKED;
+   ```
+
+4. **Set a deadlock timeout** — databases detect and kill one transaction automatically; design retry logic.
 
 ---
 
