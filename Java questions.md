@@ -16,6 +16,13 @@
 4. [Heaps](#heaps)
 5. [Log (Logarithms)](#log)
 6. [Power (Exponentiation)](#power)
+7. [Pointer Algorithms & Invariants](#pointer-algorithms--invariants)
+   - [What is a Loop Invariant?](#what-is-a-loop-invariant)
+   - [The 3-Step Method](#the-3-step-method)
+   - [Two Pointers — Move Zeros](#two-pointers--move-zeros)
+   - [Binary Search](#binary-search)
+   - [Sliding Window — Longest Substring Without Repeating Chars](#sliding-window--longest-substring-without-repeating-chars)
+   - [Fast & Slow Pointers — Cycle Detection](#fast--slow-pointers--cycle-detection)
 
 ### Java Language
 
@@ -540,6 +547,263 @@ public static int power(int base, int exp) {
         return half * half * base;
 }
 ```
+
+## Pointer Algorithms & Invariants
+
+### What is a Loop Invariant?
+
+A **loop invariant** is a condition that is **always true** at the start of every loop iteration — before any iteration, after every iteration, and when the loop ends. It describes what your data looks like at any moment, not just at the end.
+
+> Think of it as a contract your loop makes with itself.
+
+**Why does it matter?**
+
+Without invariants you write code by gut feeling, adjusting `+1` / `-1` until tests pass. With invariants you *reason* about correctness. If every operation in your loop maintains the invariant, and the loop terminates, your algorithm is correct — by definition.
+
+```
+Without invariants:              With invariants:
+"Does left++ or left-- here?"    "Moving left++ breaks invariant 1 → wrong. left-- preserves it → correct."
+```
+
+---
+
+### The 3-Step Method
+
+#### Step 1 — Define your invariants (before touching code)
+
+Write in plain English what must be true about each pointer/variable at all times.
+
+```
+Two-pointer partition example:
+  Invariant 1: nums[0 .. left-1]  → all elements satisfying condition X
+  Invariant 2: nums[right .. n-1] → all elements NOT satisfying condition X
+  Invariant 3: nums[left .. right] → unexplored territory
+```
+
+#### Step 2 — Write code that preserves them
+
+Every pointer move, swap, or assignment must leave all invariants intact. When you're unsure whether to do `left++` or `right--`, ask:
+
+> *"After this operation, do all my invariants still hold?"*
+
+If yes → do it. If no → try a different operation.
+
+#### Step 3 — Verify correctness by tracing
+
+Trace through a small example and check that **after every single iteration**, all invariants hold. If they do and the loop terminates, the algorithm is correct. If something breaks, you know *exactly which invariant failed* and *which operation caused it*.
+
+---
+
+### Two Pointers — Move Zeros
+
+**Problem:** Move all zeros to the end of the array while maintaining the relative order of non-zero elements. Do it in-place.
+
+```
+Input:  [0, 1, 0, 3, 12]
+Output: [1, 3, 12, 0, 0]
+```
+
+**Define invariants first:**
+
+```
+Invariant 1: nums[0 .. left-1]   → all non-zero elements, in original relative order
+Invariant 2: nums[left .. right-1] → all zeros (the "gap" being filled)
+Invariant 3: nums[right .. n-1]  → unexplored
+```
+
+When we find a non-zero at `right`, we swap it with `left` → non-zero moves into the "confirmed" zone (invariant 1 grows), zero stays in the "gap" (invariant 2 preserved).
+
+```java
+public void moveZeroes(int[] nums) {
+    int left = 0;
+    // Invariant 1: nums[0..left-1] are all non-zeros in original order
+    // Invariant 2: nums[left..right-1] are all zeros
+
+    for (int right = 0; right < nums.length; right++) {
+        if (nums[right] != 0) {
+            // Swap: non-zero goes into confirmed zone, zero stays in gap
+            int temp = nums[left];
+            nums[left] = nums[right];
+            nums[right] = temp;
+            left++;
+            // ✅ Invariant 1: left-1 now points to a non-zero → still holds
+            // ✅ Invariant 2: the swapped-out zero is at right, left..right-1 still zeros
+        }
+        // If nums[right] == 0: we skip it, leaving it in the unexplored zone
+        // Both invariants trivially still hold
+    }
+    // Loop ends: right == n, so "unexplored" is empty
+    // Invariant 1 covers nums[0..left-1]: all non-zeros ✅
+    // Invariant 2 covers nums[left..n-1]: all zeros ✅
+}
+```
+
+**Trace on `[0, 1, 0, 3, 12]`:**
+
+| right | nums[right] | Action         | Array state         | left |
+|-------|-------------|----------------|---------------------|------|
+| 0     | 0           | skip           | [0, 1, 0, 3, 12]    | 0    |
+| 1     | 1           | swap(0,1), l++ | [1, 0, 0, 3, 12]    | 1    |
+| 2     | 0           | skip           | [1, 0, 0, 3, 12]    | 1    |
+| 3     | 3           | swap(1,3), l++ | [1, 3, 0, 0, 12]    | 2    |
+| 4     | 12          | swap(2,4), l++ | [1, 3, 12, 0, 0]    | 3    |
+
+After each row, invariant 1 (`nums[0..left-1]` are non-zeros) and invariant 2 (`nums[left..right-1]` are zeros) hold. ✅
+
+---
+
+### Binary Search
+
+**Define invariants first:**
+
+```
+Invariant: If target exists in the array, it is always within nums[left .. right] (inclusive).
+```
+
+This single invariant tells you *exactly* when to use `mid + 1` vs `mid - 1`:
+- `nums[mid] < target` → mid cannot be the answer, target must be to the right → `left = mid + 1` (invariant preserved ✅)
+- `nums[mid] > target` → target must be to the left → `right = mid - 1` (invariant preserved ✅)
+- `nums[mid] == target` → found it ✅
+
+```java
+public int binarySearch(int[] nums, int target) {
+    int left = 0, right = nums.length - 1;
+    // Invariant: if target exists, it is in nums[left..right]
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2; // avoids integer overflow vs (left+right)/2
+
+        if (nums[mid] == target) {
+            return mid;
+        } else if (nums[mid] < target) {
+            left = mid + 1;   // target can't be at mid or left of it → shrink left bound
+            // ✅ Invariant: target is still in nums[left..right]
+        } else {
+            right = mid - 1;  // target can't be at mid or right of it → shrink right bound
+            // ✅ Invariant: target is still in nums[left..right]
+        }
+    }
+
+    return -1; // left > right → search space empty → target not found
+}
+```
+
+> 💡 The classic `left + 1` / `left - 1` off-by-one confusion disappears once you think invariant-first:
+> `left = mid` would break the invariant (mid was already checked and wasn't the target).
+
+---
+
+### Sliding Window — Longest Substring Without Repeating Chars
+
+**Problem:** Find the length of the longest substring with all unique characters.
+
+```
+Input:  "abcabcbb"
+Output: 3  ("abc")
+```
+
+**Define invariants first:**
+
+```
+Invariant: The window s[left .. right] always contains only unique characters.
+```
+
+When adding `s[right]` would violate the invariant (it's already in the window), shrink the window from the left until the invariant is restored.
+
+```java
+public int lengthOfLongestSubstring(String s) {
+    Map<Character, Integer> lastSeen = new HashMap<>(); // char → last seen index
+    int maxLen = 0;
+    int left = 0;
+    // Invariant: s[left..right] contains no duplicate characters
+
+    for (int right = 0; right < s.length(); right++) {
+        char c = s.charAt(right);
+
+        // If c is already inside the window, it would break the invariant
+        if (lastSeen.containsKey(c) && lastSeen.get(c) >= left) {
+            // Move left past the previous occurrence of c to restore invariant
+            left = lastSeen.get(c) + 1;
+        }
+        // ✅ Invariant restored: s[left..right] has no duplicates
+
+        lastSeen.put(c, right);
+        maxLen = Math.max(maxLen, right - left + 1);
+    }
+
+    return maxLen;
+}
+```
+
+**Trace on `"abcabc"`:**
+
+| right | c   | window before | action               | window after | maxLen |
+|-------|-----|---------------|----------------------|--------------|--------|
+| 0     | 'a' | ""            | add 'a'              | "a"          | 1      |
+| 1     | 'b' | "a"           | add 'b'              | "ab"         | 2      |
+| 2     | 'c' | "ab"          | add 'c'              | "abc"        | 3      |
+| 3     | 'a' | "abc"         | 'a' in window→left=1 | "bca"        | 3      |
+| 4     | 'b' | "bca"         | 'b' in window→left=2 | "cab"        | 3      |
+| 5     | 'c' | "cab"         | 'c' in window→left=3 | "abc"        | 3      |
+
+At every step, the invariant (no duplicates in window) holds. ✅
+
+---
+
+### Fast & Slow Pointers — Cycle Detection
+
+**Problem:** Detect if a linked list has a cycle. (Floyd's Tortoise and Hare)
+
+**Define invariants first:**
+
+```
+Invariant 1: slow has visited nodes [0 .. k]
+Invariant 2: fast has visited nodes [0 .. 2k]  (fast moves twice as fast)
+Invariant 3: If a cycle exists, the gap between fast and slow shrinks by 1 each iteration
+             → they MUST eventually meet inside the cycle.
+```
+
+Invariant 3 is the key insight: inside a cycle of length `L`, fast gains 1 step on slow per iteration, so after at most `L` iterations they collide. Without stating this invariant explicitly, it's easy to doubt "will they actually meet?"
+
+```java
+public boolean hasCycle(ListNode head) {
+    ListNode slow = head;
+    ListNode fast = head;
+    // Invariant: if a cycle exists, fast is gaining on slow by 1 step/iteration
+
+    while (fast != null && fast.next != null) {
+        slow = slow.next;        // moves 1 step
+        fast = fast.next.next;   // moves 2 steps
+        // ✅ Invariant holds: fast has moved 1 extra step relative to slow
+
+        if (slow == fast) {
+            return true; // they met → cycle confirmed
+        }
+    }
+
+    // fast reached null → list has an end → no cycle
+    return false;
+}
+```
+
+> **Why `fast != null && fast.next != null`?**
+> `fast.next.next` dereferences two pointers — if either is null, we'd get a NullPointerException.
+> Checking both maintains the safety invariant of the loop condition.
+
+---
+
+### Invariants Quick Reference
+
+| Pattern            | Pointer(s)      | Core Invariant                                                  | Terminates when        |
+|--------------------|-----------------|-----------------------------------------------------------------|------------------------|
+| **Two Pointers**   | `left`, `right` | `arr[0..left-1]` satisfies X; `arr[right..n-1]` satisfies Y     | `left >= right`        |
+| **Binary Search**  | `left`, `right` | Target is always in `arr[left..right]`                          | `left > right`         |
+| **Sliding Window** | `left`, `right` | Window `arr[left..right]` always satisfies the window condition | `right == n`           |
+| **Fast & Slow**    | `slow`, `fast`  | Fast is 2× ahead; gap shrinks by 1/iter inside cycle            | `fast == null` or meet |
+
+**The golden rule:** *Every single operation in your loop must leave all invariants intact. If you can't justify an operation in terms of your invariants, it's wrong.*
+
+---
 
 ## Java Core Concepts
 
