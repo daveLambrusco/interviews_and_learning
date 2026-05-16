@@ -3,11 +3,11 @@
 ## Table of Contents
 
 1. [SOLID Principles](#solid-principles)
-   - [S — Single Responsibility](#s--single-responsibility-principle-srp)
-   - [O — Open/Closed](#o--openclosed-principle-ocp)
-   - [L — Liskov Substitution](#l--liskov-substitution-principle-lsp)
-   - [I — Interface Segregation](#i--interface-segregation-principle-isp)
-   - [D — Dependency Inversion](#d--dependency-inversion-principle-dip)
+   - [S: Single Responsibility](#s-single-responsibility-principle-srp)
+   - [O: Open/Closed](#o-openclosed-principle-ocp)
+   - [L: Liskov Substitution](#l-liskov-substitution-principle-lsp)
+   - [I: Interface Segregation](#i-interface-segregation-principle-isp)
+   - [D: Dependency Inversion](#d-dependency-inversion-principle-dip)
 2. [Design Patterns](#design-patterns)
    - **Creational:** [Singleton](#singleton-pattern), [Factory](#factory-pattern), [Builder](#builder-pattern)
    - **Structural:** [Decorator](#decorator-pattern), [Proxy](#proxy-pattern), [Facade](#facade-pattern), [Repository](#repository-pattern)
@@ -17,7 +17,7 @@
 4. [Error Handling Best Practices](#error-handling-best-practices)
    - Golden rules, Java exception hierarchy, Global Exception Handler, TypeScript/Node.js patterns
 5. [Concurrency & Thread Safety](#concurrency--thread-safety)
-   - Race conditions, `AtomicInteger`, `synchronized`, `ReentrantLock`, Immutability, Java Records
+   - Java Memory Model, `volatile`, `synchronized`, `ReentrantLock`, `AtomicInteger`, which tool to choose, Immutability, Java Records
 6. [API Design Best Practices](#api-design-best-practices)
    - RESTful URL design, HTTP status codes, API versioning, DTOs vs Entities
 7. [Testing Best Practices](#testing-best-practices)
@@ -35,7 +35,7 @@
 
 The SOLID principles are five design principles for writing maintainable, scalable, and testable object-oriented code.
 
-### S — Single Responsibility Principle (SRP)
+### S: Single Responsibility Principle (SRP)
 
 > A class should have only one reason to change.
 
@@ -94,7 +94,7 @@ export class UserService {
 export class FormatDatePipe implements PipeTransform { ... }
 ```
 
-### O — Open/Closed Principle (OCP)
+### O: Open/Closed Principle (OCP)
 
 > Software entities should be open for extension but closed for modification.
 
@@ -140,7 +140,7 @@ public class DiscountService {
 }
 ```
 
-### L — Liskov Substitution Principle (LSP)
+### L: Liskov Substitution Principle (LSP)
 
 > Subtypes must be substitutable for their base types without altering program correctness.
 
@@ -183,7 +183,7 @@ public class Square implements Shape {
 }
 ```
 
-### I — Interface Segregation Principle (ISP)
+### I: Interface Segregation Principle (ISP)
 
 > Clients should not be forced to depend on interfaces they don't use.
 
@@ -238,7 +238,7 @@ interface Reportable {
 }
 ```
 
-### D — Dependency Inversion Principle (DIP)
+### D: Dependency Inversion Principle (DIP)
 
 > High-level modules should not depend on low-level modules. Both should depend on abstractions.
 
@@ -574,7 +574,7 @@ public class CsvExporter extends DataExporter {
 
 **When to use:** Report generation, data processing pipelines, test frameworks (JUnit's `@BeforeEach`/`@Test`/`@AfterEach` is template method).
 
-**Interview tip:** Spring's `JdbcTemplate`, `RestTemplate`, `KafkaTemplate` all use this pattern — the "template" name is a direct hint.
+**Interview tip:** Spring's `JdbcTemplate`, `RestTemplate`, `KafkaTemplate` all use this pattern, the "template" name is a direct hint.
 
 ---
 
@@ -678,7 +678,7 @@ public class OrderService {
 }
 ```
 
-**Interview tip:** A common question is "How does `@Transactional` work?" — the answer is **proxy pattern** (Spring wraps your bean in a proxy that manages the transaction boundary).
+**Interview tip:** A common question is "How does `@Transactional` work?" The answer is **proxy pattern** (Spring wraps your bean in a proxy that manages the transaction boundary).
 
 ---
 
@@ -969,51 +969,157 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 ## Concurrency & Thread Safety
 
-### Key Java Concepts
+### The Java Memory Model (JMM) Foundation
+
+Before studying any concurrency primitive, you need one mental model: every CPU core has its own private **cache** (L1/L2). Two threads on different cores may be working with different, stale copies of the same variable. The **Java Memory Model (JMM)** defines when a write by one thread is guaranteed to be visible to another. The answer is: only when there is a **happens-before** relationship between the write and the read.
+
+The four most important sources of happens-before in practice:
+
+1. Everything in a thread happens-before anything that thread does next (within a single thread, order is preserved).
+2. Releasing a monitor (`synchronized` block end / `lock.unlock()`) happens-before acquiring the same monitor.
+3. Writing a `volatile` field happens-before every subsequent read of that field.
+4. `Thread.start()` happens-before any code in the started thread. `Thread.join()` happens-before the code that follows it.
+
+Without a happens-before relationship, the compiler, JIT, and CPU are all free to reorder instructions. This is the root cause of every concurrency bug.
+
+### `volatile`: Visibility Without Atomicity
+
+`volatile` guarantees **visibility**: a write to a `volatile` field flushes from the writing thread's cache to main memory immediately; every subsequent read of that field by any thread reads from main memory, not from a cached copy. It does NOT guarantee atomicity for compound operations.
 
 ```java
-// ❌ Thread-unsafe — race condition
-public class Counter {
-    private int count = 0;
-    
-    public void increment() { count++; } // Read-modify-write is NOT atomic!
-    public int getCount() { return count; }
-}
+// Problem without volatile: Thread B might never see Thread A's write
+public class StopFlag {
+    private boolean running = true; // NOT volatile
 
-// ✅ Option 1: AtomicInteger (lock-free, best for simple counters)
-public class Counter {
-    private final AtomicInteger count = new AtomicInteger(0);
-    
-    public void increment() { count.incrementAndGet(); }
-    public int getCount() { return count.get(); }
-}
-
-// ✅ Option 2: synchronized (for complex critical sections)
-public class BankAccount {
-    private double balance;
-    
-    public synchronized void transfer(double amount) {
-        if (balance >= amount) {
-            balance -= amount;
-        }
+    public void stop() { running = false; } // Thread A
+    public void run() {
+        while (running) { /* work */ } // Thread B may loop forever — cached copy!
     }
 }
 
-// ✅ Option 3: ReentrantLock (more flexibility than synchronized)
+// Fix: volatile ensures Thread B sees Thread A's write
+public class StopFlag {
+    private volatile boolean running = true;
+
+    public void stop() { running = false; }
+    public void run() {
+        while (running) { /* work */ } // Thread B always reads fresh value
+    }
+}
+```
+
+`volatile` is correct when: one thread writes, other threads only read. The moment you have a read-modify-write sequence (check then act, increment, etc.) across threads, `volatile` alone is insufficient because the sequence is not atomic.
+
+```java
+// WRONG: volatile does not fix this race condition
+private volatile int count = 0;
+count++; // Thread A: reads count (0), gets interrupted
+         // Thread B: reads count (0), increments to 1, writes 1
+         // Thread A: resumes, increments to 1, writes 1 — update lost!
+
+// CORRECT for read-modify-write: use AtomicInteger
+private final AtomicInteger count = new AtomicInteger(0);
+count.incrementAndGet(); // single atomic CAS operation, no race
+```
+
+### `synchronized`: Mutual Exclusion + Visibility
+
+`synchronized` provides both **mutual exclusion** (only one thread enters the block at a time) and **visibility** (the happens-before from monitor release guarantees all writes inside the block are visible to the next thread that acquires the same monitor). It is heavier than `volatile` but correct for any critical section.
+
+```java
+// ❌ Thread-unsafe — race condition on count++
+public class Counter {
+    private int count = 0;
+    public void increment() { count++; } // read-modify-write is NOT atomic
+    public int getCount() { return count; }
+}
+
+// Option 1: synchronized method — locks on `this`
+public class Counter {
+    private int count = 0;
+    public synchronized void increment() { count++; }
+    public synchronized int getCount() { return count; }
+}
+
+// Option 2: synchronized block — prefer narrower scope to minimize contention
 public class BankAccount {
-    private double balance;
-    private final ReentrantLock lock = new ReentrantLock();
-    
-    public void transfer(double amount) {
-        lock.lock();
-        try {
-            if (balance >= amount) balance -= amount;
-        } finally {
-            lock.unlock(); // Always release in finally!
+    private BigDecimal balance;
+    private final Object lock = new Object(); // explicit lock object, not `this`
+
+    public void transfer(BigDecimal amount) {
+        synchronized (lock) {
+            if (balance.compareTo(amount) >= 0) {
+                balance = balance.subtract(amount);
+            }
         }
     }
 }
 ```
+
+**Key rules for `synchronized`:**
+- Locking on `this` exposes your lock to external callers — prefer a private `final Object lock`. 
+- Locking on a class literal (`synchronized(MyClass.class)`) affects all instances.
+- Never hold a lock while doing I/O or calling external services — you will serialize throughput for no benefit.
+- In Java 24+, virtual threads can unmount inside `synchronized` blocks (JEP 491), so the classic recommendation to use `ReentrantLock` in virtual-thread contexts is less urgent, but `ReentrantLock` still wins for tryLock/timeout/fairness features.
+
+### `ReentrantLock`: Flexible Explicit Locking
+
+```java
+public class BankAccount {
+    private BigDecimal balance;
+    private final ReentrantLock lock = new ReentrantLock();
+
+    // tryLock with timeout: does not block forever
+    public boolean transfer(BigDecimal amount, long timeoutMs) throws InterruptedException {
+        if (lock.tryLock(timeoutMs, TimeUnit.MILLISECONDS)) {
+            try {
+                if (balance.compareTo(amount) >= 0) {
+                    balance = balance.subtract(amount);
+                    return true;
+                }
+                return false;
+            } finally {
+                lock.unlock(); // ALWAYS in finally
+            }
+        }
+        return false; // could not acquire lock in time
+    }
+}
+```
+
+Use `ReentrantLock` over `synchronized` when you need: `tryLock()` with timeout, interruptible lock acquisition, or a **fair** lock (`new ReentrantLock(true)`) to prevent starvation.
+
+### `AtomicInteger` and the `java.util.concurrent.atomic` Package
+
+The `Atomic*` classes use **Compare-And-Swap (CAS)** — a single CPU instruction that reads, compares, and conditionally writes in one uninterruptible step. There is no OS-level lock, making them faster than `synchronized` for single-variable operations under low to moderate contention.
+
+```java
+AtomicInteger counter = new AtomicInteger(0);
+counter.incrementAndGet();          // atomically ++
+counter.getAndAdd(5);               // atomically += 5, returns old value
+counter.compareAndSet(10, 20);      // sets to 20 only if current value is 10
+
+// AtomicReference for object references
+AtomicReference<String> ref = new AtomicReference<>("initial");
+ref.compareAndSet("initial", "updated"); // lock-free object swap
+
+// LongAdder: better than AtomicLong under HIGH contention
+// Internally stripes the counter across cells to reduce CAS collisions
+LongAdder adder = new LongAdder();
+adder.increment();
+long total = adder.sum(); // aggregates stripes at read time
+```
+
+### Which Tool to Choose
+
+| Scenario | Best tool |
+|----------|-----------|
+| Simple counter, one writer or CAS is fine | `AtomicInteger` / `LongAdder` |
+| Simple flag, one writer | `volatile boolean` |
+| Complex critical section, multiple variables | `synchronized` or `ReentrantLock` |
+| Need tryLock / timeout / fairness | `ReentrantLock` |
+| Read-heavy, rare writes | `ReadWriteLock` / `StampedLock` |
+| I/O-bound concurrent tasks (Java 21+) | Virtual threads + `Semaphore` to cap concurrency |
 
 ### Immutability
 
@@ -1446,7 +1552,7 @@ public class BankAccount {
 
 #### Inheritance vs Composition
 
-> **"Favour composition over inheritance"** — Gang of Four
+> **"Favour composition over inheritance"**, Gang of Four
 
 ```java
 // ❌ Inheritance (tight coupling, fragile base class problem)

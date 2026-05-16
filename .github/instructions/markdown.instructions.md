@@ -6,7 +6,13 @@ applyTo: "**/*.md"
 
 ### Tables
 
-Always use properly aligned markdown tables with a header row and a separator row. Every column must be padded so that all cells in that column have the same width. Calculate the column width as the length of the longest cell in that column (including the header), then pad all other cells with trailing spaces to match. The separator row must use dashes that fill the full column width, not minimal `---`.
+Always use properly aligned markdown tables with a header row and a separator row. Follow these steps to ensure correct formatting:
+
+1. Create a header row with descriptive column names.
+2. Calculate the column width as the length of the longest cell in that column (including the header).
+3. Pad all cells in that column with trailing spaces to match the column width.
+4. Create a separator row using dashes that fill the full column width. Never use minimal `---` separators.
+5. Verify that every column has a header and no separator row is omitted.
 
 ```markdown
 | Column A   | Column B | Column C     |
@@ -15,9 +21,9 @@ Always use properly aligned markdown tables with a header row and a separator ro
 | longer val | value    | x            |
 ```
 
-- Every column must have a header.
-- Never use `|---|` or any unpadded separator. Always pad separators to column width.
-- Do not omit the separator row.
+For tables with merged cells or uneven column counts, ensure all rows have the same number of delimiters and maintain consistent cell width across all rows. For merged cells, repeat the content in each column or use a placeholder to maintain alignment.
+
+If a table cannot be formatted to meet these alignment rules (for example, due to extreme cell width disparities or content that renders poorly), use a fallback approach: simplify the table structure, convert to a list format, or move detailed information to accompanying prose.
 
 ### Fenced Code Blocks
 
