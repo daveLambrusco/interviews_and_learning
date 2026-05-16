@@ -2,6 +2,7 @@
 
 - [GitHub Copilot Beginner to Pro - AI for Coding \& Development](#github-copilot-beginner-to-pro---ai-for-coding--development)
   - [Quick Introduction](#quick-introduction)
+  - [Using the Chat](#using-the-chat)
     - [Context references with `#`](#context-references-with-)
     - [Chat participants with `@`](#chat-participants-with-)
     - [Slash commands with `/`](#slash-commands-with-)
@@ -22,10 +23,14 @@
     - [Official vs Unofficial Ways of Instructing Agents](#official-vs-unofficial-ways-of-instructing-agents)
     - [How Instructions and Agents Are Interconnected](#how-instructions-and-agents-are-interconnected)
     - [Invocation Hierarchy, UPPERCASE, and Naming](#invocation-hierarchy-uppercase-and-naming)
+      - [Who invokes whom](#who-invokes-whom)
+      - [UPPERCASE for firm constraints](#uppercase-for-firm-constraints)
+      - [Naming conventions for instruction files](#naming-conventions-for-instruction-files)
     - [The Decision Tree](#the-decision-tree)
     - [File Locations Reference](#file-locations-reference)
     - [Excluding Files with .copilotignore](#excluding-files-with-copilotignore)
     - [Best Syntax Practices](#best-syntax-practices)
+      - [The scrutiny effect](#the-scrutiny-effect)
     - [Validating and Debugging Customizations](#validating-and-debugging-customizations)
     - [Tool Aliases for Custom Agents and Prompts](#tool-aliases-for-custom-agents-and-prompts)
   - [Model Context Protocol (MCP)](#model-context-protocol-mcp)
@@ -65,7 +70,9 @@ Agentic AI is the move from a chatbot that only answers questions to a system th
 
 The drawbacks are just as real. These systems can be addictive in the wrong way, pulling people into a feedback loop that feels a bit like a casino, where you keep asking for one more try instead of thinking deeply yourself. Over time, that can lower your own reasoning skills if you stop practicing them. There is also an environmental cost: every extra model call consumes compute, energy, and hardware, so the price of scaling AI is not free.
 
-For a broader perspective on the market side of this story, see this video on what is already happening to AI’s bubble: [What’s already happening to AI’s bubble](https://www.youtube.com/watch?v=c1cBGW_zoyQ).## Using the Chat
+For a broader perspective on the market side of this story, see this video on what is already happening to AI’s bubble: [What’s already happening to AI’s bubble](https://www.youtube.com/watch?v=c1cBGW_zoyQ).
+
+## Using the Chat
 
 The Copilot Chat interface uses three prefix characters to give you precise control over context. Mastering them is the difference between a shallow Q&A session and a genuinely powerful agentic interaction.
 
@@ -165,11 +172,11 @@ The antipattern is putting everything here. If a rule is already enforced by a l
 
 #### 2. File-Specific Instructions: the "context-aware" layer
 
-These are `.instructions.md` files stored in `.github/instructions/`. They are loaded selectively, not always. There are two discovery modes:
+These are `.instructions.md` files stored in `.github/instructions/`. They are loaded selectively, not always.  
+There are two discovery modes:
 
-The `applyTo` frontmatter field attaches the instruction file automatically whenever a file matching the glob is in context. For example, `applyTo: "**/*.java"` means your Java coding guidelines are injected whenever the agent is working on a `.java` file.
-
-The `description` field enables on-demand discovery: when you ask a question, the agent reads all description fields and pulls in the instructions whose description semantically matches your intent. This is why the `description` field is so critical: it is the retrieval key. A vague description like "Helpful coding tips" will never be found. "Use when writing database migrations, rollback scripts, or schema changes" will reliably load.
+- the `applyTo` frontmatter field attaches the instruction file automatically whenever a file matching the glob is in context. For example, `applyTo: "**/*.java"` means your Java coding guidelines are injected whenever the agent is working on a `.java` file
+- the `description` field enables on-demand discovery: when you ask a question, the agent reads all description fields and pulls in the instructions whose description semantically matches your intent. This is why the `description` field is so critical: it is the retrieval key. A vague description like "Helpful coding tips" will never be found. "Use when writing database migrations, rollback scripts, or schema changes" will reliably load
 
 ```yaml
 ---
@@ -196,7 +203,10 @@ Generate comprehensive JUnit 5 tests for the provided class.
 - Naming convention: methodName_whenCondition_thenExpectation
 ```
 
-The difference from instructions: a prompt is invoked by the user intentionally, like running a command. An instruction is loaded by the agent automatically based on context.
+Prompt vs instructions:
+
+- a **prompt** is invoked by the user intentionally, like running a command
+- an **instruction** is loaded by the agent automatically based on context
 
 #### 4. Custom Agents
 
@@ -230,7 +240,8 @@ Agents can invoke each other as subagents. A parent orchestrator delegates work 
 
 #### 5. Skills
 
-Skills are the most expressive container for bundled assets. A `SKILL.md` file lives in `.github/skills/<name>/` and can bundle additional assets: scripts, templates, reference documents, alongside the instructions. A skill is loaded on-demand by the agent when the task matches its description, like a library it pulls in dynamically. Note that "most powerful" depends on what you need: a custom agent with a restricted tool palette is more powerful from a governance perspective, while a skill is more powerful when you need to ship a multi-step workflow with bundled assets.
+Skills are the most expressive container for bundled assets.  
+A `SKILL.md` file lives in `.github/skills/<name>/` and can bundle additional assets: scripts, templates, reference documents, alongside the instructions. A skill is loaded on-demand by the agent when the task matches its description, like a library it pulls in dynamically. Note that "most powerful" depends on what you need: a custom agent with a restricted tool palette is more powerful from a governance perspective, while a skill is more powerful when you need to ship a multi-step workflow with bundled assets.
 
 The distinction: a prompt is a single focused task. A skill is a multi-step workflow with bundled assets.
 
@@ -249,8 +260,6 @@ By default, the GitHub Copilot extension does not read `CLAUDE.md`, and Claude C
 The official path for GitHub Copilot is the `.github/` folder. This is version-controlled, team-shared, and automatically discovered by the extension.
 
 The unofficial pattern (which many teams still use) is putting instructions in a `docs/` folder or a `prompts/` folder at the repo root, then manually referencing those files via `@workspace` in chat or the "Add Context" button. This predates the `.github/` convention and is purely manual, the agent does not discover these files automatically. It works, but it does not scale.
-
-A subtler unofficial approach common in 2024 is putting a `SYSTEM_PROMPT.md` or `AI_CONTEXT.md` at the repo root and telling the agent to read it at the start of every session. This is fragile because it relies on the user remembering to include it, and it does not compose well across multiple instruction files.
 
 The `.github/` folder convention is the right answer for any team that wants reliable, automatic, composable agent customization.
 
@@ -276,19 +285,25 @@ Each layer serves a different scope: project, file type, workflow stage, specifi
 
 ### Invocation Hierarchy, UPPERCASE, and Naming
 
-**Who invokes whom.** There are three distinct mechanisms, and confusing them is a common source of bugs in agent setups.
+#### Who invokes whom
 
-Instructions are injected: they are not "called" by anyone. VS Code adds them to the model's context automatically, based on glob patterns (`applyTo`) or semantic matching of the `description` field to the current task. No user action or agent action is required.
+There are three distinct mechanisms, and confusing them is a common source of bugs in agent setups.
 
-Prompts are user-invoked: the user types a `/command` to run them. A prompt can reference tools in its frontmatter, so it can in turn trigger agent behavior, but the trigger is always the human.
+**Instructions** are injected: they are not "called" by anyone. VS Code adds them to the model's context automatically, based on glob patterns (`applyTo`) or semantic matching of the `description` field to the current task. No user action or agent action is required.
 
-Agents are selected or delegated: the user picks an agent from the mode dropdown (for user-invocable agents), or a parent agent delegates to a subagent by calling the `agent` tool. The parent agent selects which subagent to invoke by semantically matching the request to each agent's `description` field, exactly the same matching logic that governs instruction discovery. Subagents cannot themselves spawn sub-subagents; the hierarchy is two levels deep by design.
+**Prompts** are user-invoked: the user types a `/command` to run them. A prompt can reference tools in its frontmatter, so it can in turn trigger agent behavior, but the trigger is always the human.
+
+**Agents** are selected or delegated: the user picks an agent from the mode dropdown (for user-invocable agents), or a parent agent delegates to a subagent by calling the `agent` tool. The parent agent selects which subagent to invoke by semantically matching the request to each agent's `description` field, exactly the same matching logic that governs instruction discovery. Subagents cannot themselves spawn sub-subagents; the hierarchy is two levels deep by design.
 
 This resolution order summarizes a single message: select agent, load always-on instructions, load matching file instructions, execute prompt body if present, agent performs tool calls and may delegate to subagents.
 
-**UPPERCASE for firm constraints.** Writing critical rules in UPPERCASE signals a non-negotiable constraint to the model. Practitioners and internal testing both confirm that models comply more reliably with rules in capitals than with the same rules in mixed case. The mechanism is that uppercase text patterns in training data are associated with warnings, error messages, and system constraints, all of which the model has learned to treat as hard boundaries. Use UPPERCASE sparingly, only for the rules that must never be violated: "NEVER edit production configuration files", "ALWAYS run the test suite before proposing a commit", "DO NOT add dependencies without explicit approval." Overusing it dilutes the signal. Reserve it for your top three to five non-negotiables.
+#### UPPERCASE for firm constraints
 
-**Naming conventions for instruction files.** The file name becomes the display label in the VS Code Agent Customizations editor and appears in hover tooltips. Use a descriptive, action-oriented pattern: `topic-concern.instructions.md`. Examples: `api-error-handling.instructions.md`, `sql-migration-safety.instructions.md`, `angular-component-style.instructions.md`. Avoid generic names like `rules.instructions.md` or `standards.instructions.md`; they tell neither the agent nor the developer what the file covers, which makes discovery harder and management messier over time.
+Writing critical rules in UPPERCASE signals a non-negotiable constraint to the model. Practitioners and internal testing both confirm that models comply more reliably with rules in capitals than with the same rules in mixed case. The mechanism is that uppercase text patterns in training data are associated with warnings, error messages, and system constraints, all of which the model has learned to treat as hard boundaries. Use UPPERCASE sparingly, only for the rules that must never be violated: "NEVER edit production configuration files", "ALWAYS run the test suite before proposing a commit", "DO NOT add dependencies without explicit approval." Overusing it dilutes the signal. Reserve it for your top three to five non-negotiables.
+
+#### Naming conventions for instruction files
+
+The file name becomes the display label in the VS Code Agent Customizations editor and appears in hover tooltips. Use a descriptive, action-oriented pattern: `topic-concern.instructions.md`. Examples: `api-error-handling.instructions.md`, `sql-migration-safety.instructions.md`, `angular-component-style.instructions.md`. Avoid generic names like `rules.instructions.md` or `standards.instructions.md`; they tell neither the agent nor the developer what the file covers, which makes discovery harder and management messier over time.
 
 ### The Decision Tree
 
@@ -363,7 +378,9 @@ Rules that prevent silent failures:
 - Avoid `applyTo: "**"` unless the instruction truly applies to every file, it burns context window on every interaction.
 - The `copilot-instructions.md` file has a hard limit of approximately 8,000 characters. Content beyond that limit is silently truncated: no warning is shown, and rules at the bottom simply disappear. Monitor the character count as the file grows. If you are approaching the limit, move verbose or domain-specific rules into file-specific `.instructions.md` files that load on demand rather than on every request.
 
-**The scrutiny effect.** Telling the model that its output will be reviewed by a more capable system or a senior engineer consistently produces more careful, higher-quality output. The mechanism is behavioral: during pretraining, models observed that humans write more carefully when their work is subject to evaluation, and the model has internalized this association. Phrases that work in practice: "Your changes will be reviewed by a principal engineer before merging" or "A second agent will audit your output for security vulnerabilities before deployment." This is not deception if you actually plan to review the output, which you always should. Adding a single line like "YOUR OUTPUT WILL BE REVIEWED FOR CORRECTNESS AND SECURITY BEFORE USE" to your always-on instructions is enough. You do not need to name a specific tool like Codex to get the effect; what matters is the perceived evaluation, not the evaluator. Whether naming a specific system like Codex provides a stronger signal than a generic "senior engineer" is anecdotal and not rigorously documented. What is documented (in self-critique and constitutional AI research) is that the perceived scrutiny, not its source, is what drives improvement.
+#### The scrutiny effect
+
+Telling the model that its output will be reviewed by a more capable system or a senior engineer consistently produces more careful, higher-quality output. The mechanism is behavioral: during pretraining, models observed that humans write more carefully when their work is subject to evaluation, and the model has internalized this association. Phrases that work in practice: "Your changes will be reviewed by a principal engineer before merging" or "A second agent will audit your output for security vulnerabilities before deployment." This is not deception if you actually plan to review the output, which you always should. Adding a single line like "YOUR OUTPUT WILL BE REVIEWED FOR CORRECTNESS AND SECURITY BEFORE USE" to your always-on instructions is enough. You do not need to name a specific tool like Codex to get the effect; what matters is the perceived evaluation, not the evaluator. Whether naming a specific system like Codex provides a stronger signal than a generic "senior engineer" is anecdotal and not rigorously documented. What is documented (in self-critique and constitutional AI research) is that the perceived scrutiny, not its source, is what drives improvement.
 
 ### Validating and Debugging Customizations
 
@@ -670,7 +687,8 @@ The available tool names you can match against are: `ask_user`, `bash`, `create`
 
 ### Disabling Hooks
 
-Set `disableAllHooks: true` at the top level of a hook file to suspend every hook declared in that file without deleting the configuration. This is the recommended way to temporarily pause automation during debugging or sensitive operations. When set in a single `.github/hooks/*.json` file, only the hooks in that file are suspended. When set in a repository-level `settings.json`, every hook from every source is suspended for CLI sessions in that repository (the cloud agent does not read `settings.json`).
+Set `disableAllHooks: true` at the top level of a hook file to suspend every hook declared in that file without deleting the configuration.  
+This is the recommended way to temporarily pause automation during debugging or sensitive operations. When set in a single `.github/hooks/*.json` file, only the hooks in that file are suspended. When set in a repository-level `settings.json`, every hook from every source is suspended for CLI sessions in that repository (the cloud agent does not read `settings.json`).
 
 ### Monitoring and Observability
 
